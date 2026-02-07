@@ -30,10 +30,16 @@ router.post('/sync/pull', async (req: Request, res: Response) => {
   }
 });
 
-// 📦 Endpoint для отримання списку продуктів (для перевірки)
+// 📦 Endpoint для отримання списку продуктів (для перевірки та синхронізації)
 router.get('/products', async (req: Request, res: Response) => {
   try {
-    const result = await pool.query('SELECT * FROM "Product" ORDER BY name ASC');
+    const { lastSync } = req.query;
+    const lastSyncDate = lastSync ? new Date(String(lastSync)) : new Date(0);
+
+    const result = await pool.query(
+      'SELECT * FROM "Product" WHERE "updatedAt" > $1 ORDER BY "updatedAt" ASC',
+      [lastSyncDate]
+    );
     res.json(result.rows);
   } catch (error) {
     console.error('Get products error:', error);

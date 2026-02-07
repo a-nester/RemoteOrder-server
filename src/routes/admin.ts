@@ -150,11 +150,11 @@ router.put('/products/:id', upload.array('photos', 5), async (req: Request, res:
     }
 });
 
-// ❌ Delete Product
+// ❌ Delete Product (Soft Delete)
 router.delete('/products/:id', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        await pool.query('DELETE FROM "Product" WHERE "id" = $1', [id]);
+        await pool.query('UPDATE "Product" SET "deleted" = true, "updatedAt" = NOW() WHERE "id" = $1', [id]);
         res.json({ success: true, message: 'Product deleted' });
     } catch (error) {
         console.error('Delete product error:', error);

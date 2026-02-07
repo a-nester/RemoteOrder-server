@@ -22,6 +22,7 @@ const seed = async () => {
         "unit" TEXT NOT NULL,
         "category" TEXT,
         "photos" TEXT[] DEFAULT '{}',
+        "deleted" BOOLEAN DEFAULT false,
         "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
         "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
       );
@@ -37,8 +38,8 @@ const seed = async () => {
       const prices = product.prices || { standard: 0 };
 
       await client.query(`
-        INSERT INTO "Product" ("name", "prices", "unit", "category", "photos")
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO "Product" ("name", "prices", "unit", "category", "photos", "deleted", "updatedAt")
+        VALUES ($1, $2, $3, $4, $5, false, NOW())
       `, [product.name, JSON.stringify(prices), product.unit, product.category, []]);
     }
 
