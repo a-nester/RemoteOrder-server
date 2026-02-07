@@ -4,7 +4,7 @@ services:
     env: node
     plan: free
     buildCommand: npm install && npx prisma generate && npm run build
-    startCommand: sh start.sh
+    startCommand: npx prisma migrate deploy && node dist/index.js
     envVars:
       - key: NODE_ENV
         value: production
