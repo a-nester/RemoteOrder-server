@@ -30,6 +30,17 @@ router.post('/sync/pull', async (req: Request, res: Response) => {
   }
 });
 
+// 📦 Endpoint для отримання списку продуктів (для перевірки)
+router.get('/products', async (req: Request, res: Response) => {
+  try {
+    const result = await pool.query('SELECT * FROM "Product" ORDER BY name ASC');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get products error:', error);
+    res.status(500).json({ error: 'Failed to get products' });
+  }
+});
+
 // 📱 Endpoint для надсилання змін (push to server)
 router.post('/sync/push', async (req: Request, res: Response) => {
   try {
