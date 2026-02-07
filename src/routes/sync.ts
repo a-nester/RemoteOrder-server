@@ -161,7 +161,7 @@ router.get('/sync/status/:userId', async (req: Request, res: Response) => {
     const { userId } = req.params;
 
     const syncLogs = await prisma.syncLog.findMany({
-      where: { userId },
+      where: { userId: String(userId) },
       orderBy: { createdAt: 'desc' },
       take: 10,
     });
