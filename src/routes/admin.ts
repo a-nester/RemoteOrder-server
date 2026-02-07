@@ -34,8 +34,8 @@ router.use(adminAuth);
 router.post('/products', upload.array('photos', 5), async (req: Request, res: Response) => {
     try {
         const { name, unit, category, prices } = req.body;
-        const files = (req as any).files as Express.Multer.File[];
-        const photoUrls = files ? files.map(file => `/uploads/${file.filename}`) : [];
+        const files = (req as any).files as any[];
+        const photoUrls = files ? files.map((file: any) => `/uploads/${file.filename}`) : [];
 
         // Parse prices if sent as string (e.g. from FormData)
         let parsedPrices = prices;
@@ -66,9 +66,9 @@ router.put('/products/:id', upload.array('photos', 5), async (req: Request, res:
     try {
         const { id } = req.params;
         const { name, unit, category, prices, existingPhotos } = req.body;
-        const files = (req as any).files as Express.Multer.File[];
+        const files = (req as any).files as any[];
 
-        const newPhotoUrls = files ? files.map(file => `/uploads/${file.filename}`) : [];
+        const newPhotoUrls = files ? files.map((file: any) => `/uploads/${file.filename}`) : [];
 
         // Parse prices
         let parsedPrices = prices;
