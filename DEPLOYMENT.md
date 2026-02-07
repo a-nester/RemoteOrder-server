@@ -36,8 +36,8 @@ git push origin main
 | **Environment** | `Node` |
 | **Region** | Выберіть найближчий |
 | **Branch** | `main` |
-| **Build Command** | `npm install && npx prisma generate && npm run build` |
-| **Start Command** | `npx prisma migrate deploy && node dist/index.js` |
+| **Build Command** | `npm install && npm run build` |
+| **Start Command** | `node dist/index.js` |
 
 ⚠️ **ВАЖЛИВО**: Встановіть Start Command у **Settings** → **Build & Deploy** після створення сервісу!
 
