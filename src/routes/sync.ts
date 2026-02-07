@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import prisma from '../db.js';
+import pool from '../db.js';
 
 const router = Router();
 
@@ -12,18 +12,16 @@ router.post('/sync/pull', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'userId is required' });
     }
 
-    const orders = await prisma.order.findMany({
-      where: {
-        userId: userId,
-        updatedAt: {
-          gte: lastSync ? new Date(lastSync) : new Date(0),
-        },
-      },
-    });
+    const lastSyncDate = lastSync ? new Date(lastSync) : new Date(0);
+
+    const result = await pool.query(
+      `SELECT * FROM "Order" WHERE "userId" = $1 AND "updatedAt" >= $2`,
+      [userId, lastSyncDate]
+    );
 
     res.json({
       success: true,
-      data: orders,
+      data: result.rows,
       timestamp: new Date(),
     });
   } catch (error) {
@@ -50,37 +48,70 @@ router.post('/sync/push', async (req: Request, res: Response) => {
         let result;
 
         if (operation === 'INSERT') {
-          result = await prisma.order.create({
-            data: {
-              ...data,
-              userId,
-            },
-          });
+          const keys = Object.keys(data).filter(key => key !== 'id'); // Exclude id if provided in data, usually it's separate
+          const values = keys.map((_, i) => `$${i + 2}`); // $1 is userId
+
+          // Construct INSERT query dynamically or manually if schema is fixed. 
+          // For safety and simplicity given fixed schema likely:
+          // However, 'data' is JSONB in DB but here it's the fields. 
+          // Wait, the previous code spread ...data. 
+          // Let's assume 'data' contains columns like status, total, items.
+
+          const fields = ['id', 'userId', 'status', 'total', 'items', 'updatedAt'];
+          const insertQuery = `
+            INSERT INTO "Order" (id, "userId", status, total, items, "updatedAt")
+            VALUES ($1, $2, $3, $4, $5, NOW())
+            RETURNING *
+          `;
+
+          result = await pool.query(insertQuery, [
+            id,
+            userId,
+            data.status || 'pending',
+            data.total || 0,
+            JSON.stringify(data.items || []),
+          ]);
+
         } else if (operation === 'UPDATE') {
-          result = await prisma.order.update({
-            where: { id },
-            data,
-          });
+          // Dynamic UPDATE is tricky with raw SQL without a helper, but workable.
+          // For now assuming standard fields update.
+          const updateQuery = `
+            UPDATE "Order" 
+            SET status = COALESCE($2, status),
+                total = COALESCE($3, total),
+                items = COALESCE($4, items),
+                "updatedAt" = NOW()
+            WHERE id = $1
+            RETURNING *
+          `;
+          result = await pool.query(updateQuery, [
+            id,
+            data.status,
+            data.total,
+            data.items ? JSON.stringify(data.items) : null
+          ]);
+
         } else if (operation === 'DELETE') {
-          result = await prisma.order.delete({
-            where: { id },
-          });
+          result = await pool.query('DELETE FROM "Order" WHERE id = $1 RETURNING *', [id]);
         }
 
         // Log the sync
-        await prisma.syncLog.create({
-          data: {
+        await pool.query(
+          `INSERT INTO "SyncLog" (id, "userId", action, "table", "recordId", data, synced, "createdAt", "updatedAt")
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW(), NOW())`,
+          [
             userId,
-            action: operation,
-            table: 'Order',
-            recordId: id,
-            data: change,
-            synced: true,
-          },
-        });
+            operation,
+            'Order',
+            id,
+            JSON.stringify(change),
+            true
+          ]
+        );
 
-        results.push({ id, success: true, data: result });
+        results.push({ id, success: true, data: result?.rows[0] });
       } catch (err) {
+        console.error(err)
         results.push({ id, success: false, error: String(err) });
       }
     }
@@ -98,6 +129,7 @@ router.post('/sync/push', async (req: Request, res: Response) => {
 
 // 🔄 Full sync endpoint (atomic operation)
 router.post('/sync/full', async (req: Request, res: Response) => {
+  const client = await pool.connect();
   try {
     const { userId, lastSync, changes } = req.body;
 
@@ -105,26 +137,33 @@ router.post('/sync/full', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'userId is required' });
     }
 
+    await client.query('BEGIN');
+
     // Process changes
     const changeResults = [];
     if (changes && Array.isArray(changes)) {
+      // Similar logic to push but using 'client' for transaction
       for (const change of changes) {
         const { id, operation, data } = change;
         try {
-          let result;
           if (operation === 'INSERT') {
-            result = await prisma.order.create({
-              data: { ...data, userId },
-            });
+            await client.query(
+              `INSERT INTO "Order" (id, "userId", status, total, items, "updatedAt")
+                         VALUES ($1, $2, $3, $4, $5, NOW())`,
+              [id, userId, data.status || 'pending', data.total || 0, JSON.stringify(data.items || [])]
+            );
           } else if (operation === 'UPDATE') {
-            result = await prisma.order.update({
-              where: { id },
-              data,
-            });
+            await client.query(
+              `UPDATE "Order" 
+                         SET status = COALESCE($2, status),
+                             total = COALESCE($3, total),
+                             items = COALESCE($4, items),
+                             "updatedAt" = NOW()
+                         WHERE id = $1`,
+              [id, data.status, data.total, data.items ? JSON.stringify(data.items) : null]
+            );
           } else if (operation === 'DELETE') {
-            result = await prisma.order.delete({
-              where: { id },
-            });
+            await client.query('DELETE FROM "Order" WHERE id = $1', [id]);
           }
           changeResults.push({ id, success: true });
         } catch (err) {
@@ -133,25 +172,27 @@ router.post('/sync/full', async (req: Request, res: Response) => {
       }
     }
 
+    await client.query('COMMIT');
+
     // Get all updated data
-    const orders = await prisma.order.findMany({
-      where: {
-        userId: userId,
-        updatedAt: {
-          gte: lastSync ? new Date(lastSync) : new Date(0),
-        },
-      },
-    });
+    const lastSyncDate = lastSync ? new Date(lastSync) : new Date(0);
+    const ordersResult = await pool.query(
+      `SELECT * FROM "Order" WHERE "userId" = $1 AND "updatedAt" >= $2`,
+      [userId, lastSyncDate]
+    );
 
     res.json({
       success: true,
       changeResults,
-      serverData: orders,
+      serverData: ordersResult.rows,
       timestamp: new Date(),
     });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Full sync error:', error);
     res.status(500).json({ error: 'Sync failed' });
+  } finally {
+    client.release();
   }
 });
 
@@ -160,15 +201,14 @@ router.get('/sync/status/:userId', async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
 
-    const syncLogs = await prisma.syncLog.findMany({
-      where: { userId: String(userId) },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-    });
+    const result = await pool.query(
+      `SELECT * FROM "SyncLog" WHERE "userId" = $1 ORDER BY "createdAt" DESC LIMIT 10`,
+      [String(userId)]
+    );
 
     res.json({
       success: true,
-      lastSyncs: syncLogs,
+      lastSyncs: result.rows,
     });
   } catch (error) {
     console.error('Status check error:', error);

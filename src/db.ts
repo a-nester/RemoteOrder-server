@@ -1,13 +1,20 @@
-import { PrismaClient } from '@prisma/client';
+import pg from 'pg';
+import dotenv from 'dotenv';
 
-const prisma = new PrismaClient({
-  log: ['warn', 'error'],
+dotenv.config();
+
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false, // Required for Render
+  },
 });
 
 export const connectDB = async () => {
   try {
-    await prisma.$connect();
-    console.log('✅ PostgreSQL Connected via Prisma');
+    const client = await pool.connect();
+    console.log('✅ PostgreSQL Connected via pg');
+    client.release();
   } catch (error) {
     if (error instanceof Error) {
       console.error(`❌ Database Error: ${error.message}`);
@@ -19,7 +26,7 @@ export const connectDB = async () => {
 };
 
 export const disconnectDB = async () => {
-  await prisma.$disconnect();
+  await pool.end();
 };
 
-export default prisma;
+export default pool;
