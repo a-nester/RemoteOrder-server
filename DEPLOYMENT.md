@@ -39,6 +39,8 @@ git push origin main
 | **Build Command** | `npm install && npx prisma generate && npm run build` |
 | **Start Command** | `npx prisma migrate deploy && node dist/index.js` |
 
+⚠️ **ВАЖЛИВО**: Встановіть Start Command у **Settings** → **Build & Deploy** після створення сервісу!
+
 ### 2.4 Обирання плану
 - Виберіть **Free** (або більший за потреби)
 - Натисніть **"Create Web Service"**
@@ -74,6 +76,16 @@ NODE_ENV = production
 ```
 
 **Render автоматично встановлює PORT, тому не потрібно додавати вручну**
+
+### ⭐ КРИТИЧНО: Встановіть Start Command
+
+1. Перейдіть у **Settings** 
+2. Знайдіть **Build & Deploy**
+3. У полі **Start Command** введіть:
+   ```
+   npx prisma migrate deploy && node dist/index.js
+   ```
+4. Натисніть **Save**
 
 ## 5️⃣ Крок 5: Розгортання
 
