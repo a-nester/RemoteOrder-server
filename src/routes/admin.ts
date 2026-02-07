@@ -5,6 +5,8 @@ import path from 'path';
 import fs from 'fs';
 import { adminAuth } from '../middleware/auth.js';
 
+// removed MulterRequest interface to avoid conflict
+
 const router = Router();
 
 // Configure Multer for file uploads
@@ -32,7 +34,7 @@ router.use(adminAuth);
 router.post('/products', upload.array('photos', 5), async (req: Request, res: Response) => {
     try {
         const { name, unit, category, prices } = req.body;
-        const files = req.files as Express.Multer.File[];
+        const files = (req as any).files as Express.Multer.File[];
         const photoUrls = files ? files.map(file => `/uploads/${file.filename}`) : [];
 
         // Parse prices if sent as string (e.g. from FormData)
@@ -64,7 +66,7 @@ router.put('/products/:id', upload.array('photos', 5), async (req: Request, res:
     try {
         const { id } = req.params;
         const { name, unit, category, prices, existingPhotos } = req.body;
-        const files = req.files as Express.Multer.File[];
+        const files = (req as any).files as Express.Multer.File[];
 
         const newPhotoUrls = files ? files.map(file => `/uploads/${file.filename}`) : [];
 
