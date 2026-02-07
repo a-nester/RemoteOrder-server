@@ -1,5 +1,14 @@
 node_modules
-.env
 dist
-coverage
+*.log
+.env
+.env.local
+.env.*.local
 .DS_Store
+.vscode
+.idea
+*.swp
+*.swo
+build/
+coverage/
+prisma/migrations/

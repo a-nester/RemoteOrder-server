@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: remoteorder-server
+    env: node
+    plan: free
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npx prisma migrate deploy && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: remoteorder-db
+          property: connectionString
+    autoDeploy: true
+
+  - type: pserv
+    name: remoteorder-db
+    ipAllowList: []
+    plan: free
+    postgresVersion: 15
