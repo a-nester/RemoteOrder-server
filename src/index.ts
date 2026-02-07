@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { connectDB, disconnectDB } from './db.js';
 import syncRoutes from './routes/sync.js';
+import adminRoutes from './routes/admin.js';
+import path from 'path';
 
 dotenv.config();
 
@@ -11,6 +13,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static('uploads'));
 
 // Routes
 app.get('/', (req, res) => {
@@ -18,6 +21,7 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api', syncRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

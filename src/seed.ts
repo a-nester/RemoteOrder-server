@@ -21,6 +21,7 @@ const seed = async () => {
         "prices" JSONB DEFAULT '{}',
         "unit" TEXT NOT NULL,
         "category" TEXT,
+        "photos" TEXT[] DEFAULT '{}',
         "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
         "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
       );
@@ -36,9 +37,9 @@ const seed = async () => {
       const prices = product.prices || { standard: 0 };
 
       await client.query(`
-        INSERT INTO "Product" ("name", "prices", "unit", "category")
-        VALUES ($1, $2, $3, $4)
-      `, [product.name, JSON.stringify(prices), product.unit, product.category]);
+        INSERT INTO "Product" ("name", "prices", "unit", "category", "photos")
+        VALUES ($1, $2, $3, $4, $5)
+      `, [product.name, JSON.stringify(prices), product.unit, product.category, []]);
     }
 
     await client.query('COMMIT');
