@@ -37,7 +37,7 @@ git push origin main
 | **Region** | Выберіть найближчий |
 | **Branch** | `main` |
 | **Build Command** | `npm install && npx prisma generate && npm run build` |
-| **Start Command** | `npx prisma migrate deploy && npm start` |
+| **Start Command** | `sh start.sh` |
 
 ### 2.4 Обирання плану
 - Виберіть **Free** (або більший за потреби)
@@ -71,10 +71,9 @@ git push origin main
 ```
 DATABASE_URL = postgresql://user:password@...render.com/remoteorder
 NODE_ENV = production
-PORT = 10000
 ```
 
-**Render автоматично встановлює PORT, тому не потрібно вручну 10000**
+**Render автоматично встановлює PORT, тому не потрібно додавати вручну**
 
 ## 5️⃣ Крок 5: Розгортання
 
