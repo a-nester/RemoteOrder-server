@@ -2,6 +2,7 @@ export interface Product {
     name: string;
     unit: string;
     category: string;
+    prices?: Record<string, number>;
 }
 
 export const products: Product[] = [

@@ -8,13 +8,17 @@ const seed = async () => {
 
     await client.query('BEGIN');
 
-    // 1. Create Table if not exists
-    console.log('🔨 Ensuring Product table exists...');
+    // 1. Drop Table to ensure schema update
+    console.log('🗑️ Dropping existing Product table...');
+    await client.query('DROP TABLE IF EXISTS "Product" CASCADE');
+
+    // 2. Create Table
+    console.log('🔨 Creating Product table...');
     await client.query(`
       CREATE TABLE IF NOT EXISTS "Product" (
         "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         "name" TEXT NOT NULL,
-        "price" DECIMAL(10, 2) NOT NULL,
+        "prices" JSONB DEFAULT '{}',
         "unit" TEXT NOT NULL,
         "category" TEXT,
         "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -25,17 +29,16 @@ const seed = async () => {
     // Create index on name for faster lookups/uniqueness if desired
     await client.query(`CREATE INDEX IF NOT EXISTS "Product_name_idx" ON "Product"("name");`);
 
-    // 2. Clear existing data (Optional: remove if you want append behavior)
-    console.log('🧹 Clearing existing products...');
-    await client.query('TRUNCATE TABLE "Product" RESTART IDENTITY');
-
     // 3. Insert new data
     console.log(`📦 Inserting ${products.length} products...`);
     for (const product of products) {
+      // Default price structure since source data has no prices
+      const prices = product.prices || { standard: 0 };
+
       await client.query(`
-        INSERT INTO "Product" ("name", "price", "unit", "category")
-        VALUES ($1, 0, $2, $3)
-      `, [product.name, product.unit, product.category]);
+        INSERT INTO "Product" ("name", "prices", "unit", "category")
+        VALUES ($1, $2, $3, $4)
+      `, [product.name, JSON.stringify(prices), product.unit, product.category]);
     }
 
     await client.query('COMMIT');
