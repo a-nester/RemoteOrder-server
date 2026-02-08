@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { connectDB, disconnectDB } from './db.js';
 import syncRoutes from './routes/sync.js';
 import adminRoutes from './routes/admin.js';
+import priceTypeRoutes from './routes/priceTypes.js';
 import path from 'path';
 
 dotenv.config();
@@ -22,6 +23,7 @@ app.get('/', (req, res) => {
 
 app.use('/api', syncRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/admin', priceTypeRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
