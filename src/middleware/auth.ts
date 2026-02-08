@@ -9,6 +9,7 @@ export const adminAuth = (req: Request, res: Response, next: NextFunction) => {
     const secret = req.headers['x-admin-secret'];
 
     if (!secret || secret !== ADMIN_SECRET) {
+        console.log("req.headers", req.headers);
         return res.status(403).json({ error: 'Access denied. Invalid admin secret.' });
     }
 
