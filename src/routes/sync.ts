@@ -30,17 +30,32 @@ router.post('/sync/pull', async (req: Request, res: Response) => {
   }
 });
 
+import { transformProductForUser, Product, User } from '../utils/productTransformer.js';
+
 // 📦 Endpoint для отримання списку продуктів (для перевірки та синхронізації)
 router.get('/products', async (req: Request, res: Response) => {
   try {
-    const { lastSync } = req.query;
+    const { lastSync, userId } = req.query; // Assuming userId passed for now, or extract from token
     const lastSyncDate = lastSync ? new Date(String(lastSync)) : new Date(0);
+
+    // Fetch user if userId is provided (Simulated Auth)
+    // In real app, extracting User from JWT middleware is better.
+    let user: User | undefined;
+    if (userId) {
+      const userResult = await pool.query('SELECT * FROM "User" WHERE id = $1', [userId]);
+      if (userResult.rows.length > 0) {
+        user = userResult.rows[0];
+      }
+    }
 
     const result = await pool.query(
       'SELECT * FROM "Product" WHERE "updatedAt" > $1 ORDER BY "updatedAt" ASC',
       [lastSyncDate]
     );
-    res.json(result.rows);
+
+    const products = result.rows.map(p => transformProductForUser(p as Product, user));
+
+    res.json(products);
   } catch (error) {
     console.error('Get products error:', error);
     res.status(500).json({ error: 'Failed to get products' });

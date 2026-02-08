@@ -12,8 +12,21 @@ const seed = async () => {
     console.log('🗑️ Dropping existing Product table...');
     await client.query('DROP TABLE IF EXISTS "Product" CASCADE');
 
-    // 2. Create Table
-    console.log('🔨 Creating Product table...');
+    // 2. Create Tables
+    console.log('🔨 Creating tables...');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "User" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "phone" TEXT UNIQUE NOT NULL,
+        "password" TEXT NOT NULL,
+        "name" TEXT,
+        "priceType" TEXT DEFAULT 'standard',
+        "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS "Product" (
         "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
