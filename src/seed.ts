@@ -54,6 +54,41 @@ const seed = async () => {
       );
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "ProductBatch" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "productId" UUID NOT NULL,
+        "quantityTotal" INT NOT NULL,
+        "quantityLeft" INT NOT NULL,
+        "enterPrice" DECIMAL(10, 2) NOT NULL,
+        "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // Normalized Order Structure
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "OrderItem" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "orderId" UUID NOT NULL, -- Link to Order table (which we need to ensure exists or is created/updated later)
+        "productId" UUID NOT NULL,
+        "quantity" INT NOT NULL,
+        "sellPrice" DECIMAL(10, 2) NOT NULL,
+        "createdAt" TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "OrderItemBatch" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "orderItemId" UUID NOT NULL,
+        "productBatchId" UUID NOT NULL,
+        "quantity" INT NOT NULL,
+        "enterPrice" DECIMAL(10, 2) NOT NULL,
+         "createdAt" TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+
     // Create index on name for faster lookups/uniqueness if desired
     await client.query(`CREATE INDEX IF NOT EXISTS "Product_name_idx" ON "Product"("name");`);
 

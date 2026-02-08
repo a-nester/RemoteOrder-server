@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import pool from '../db.js';
+import { InventoryService } from '../services/inventoryService.js';
 
 const router = Router();
 
@@ -80,29 +81,61 @@ router.post('/sync/push', async (req: Request, res: Response) => {
         let result;
 
         if (operation === 'INSERT') {
-          const keys = Object.keys(data).filter(key => key !== 'id'); // Exclude id if provided in data, usually it's separate
-          const values = keys.map((_, i) => `$${i + 2}`); // $1 is userId
+          // We need a transaction for each order processing to ensure consistency
+          const client = await pool.connect();
+          try {
+            await client.query('BEGIN');
 
-          // Construct INSERT query dynamically or manually if schema is fixed. 
-          // For safety and simplicity given fixed schema likely:
-          // However, 'data' is JSONB in DB but here it's the fields. 
-          // Wait, the previous code spread ...data. 
-          // Let's assume 'data' contains columns like status, total, items.
+            const fields = ['id', 'userId', 'status', 'total', 'items', 'updatedAt'];
+            const insertQuery = `
+               INSERT INTO "Order" (id, "userId", status, total, items, "updatedAt")
+               VALUES ($1, $2, $3, $4, $5, NOW())
+               RETURNING *
+             `;
 
-          const fields = ['id', 'userId', 'status', 'total', 'items', 'updatedAt'];
-          const insertQuery = `
-            INSERT INTO "Order" (id, "userId", status, total, items, "updatedAt")
-            VALUES ($1, $2, $3, $4, $5, NOW())
-            RETURNING *
-          `;
+            // 1. Insert Order
+            result = await client.query(insertQuery, [
+              id,
+              userId,
+              data.status || 'pending',
+              data.total || 0,
+              JSON.stringify(data.items || []), // Keep JSON for compatibility/cache
+            ]);
 
-          result = await pool.query(insertQuery, [
-            id,
-            userId,
-            data.status || 'pending',
-            data.total || 0,
-            JSON.stringify(data.items || []),
-          ]);
+            // 2. Process Items (FIFO)
+            if (data.items && Array.isArray(data.items)) {
+              for (const item of data.items) {
+                // item: { productId, quantity, price }
+                // Deduct stock
+                const deductions = await InventoryService.deductStock(client, item.id, item.count); // Assuming item.id is productId and item.count is quantity based on typical structure. Need to verify structure.
+
+                // Create Normalized OrderItem
+                const orderItemResult = await client.query(
+                  `INSERT INTO "OrderItem" ("id", "orderId", "productId", "quantity", "sellPrice", "createdAt")
+                         VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())
+                         RETURNING id`,
+                  [id, item.id, item.count, item.price]
+                );
+                const orderItemId = orderItemResult.rows[0].id;
+
+                // Create OrderItemBatch links
+                for (const deduction of deductions) {
+                  await client.query(
+                    `INSERT INTO "OrderItemBatch" ("id", "orderItemId", "productBatchId", "quantity", "enterPrice", "createdAt")
+                             VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())`,
+                    [orderItemId, deduction.batchId, deduction.quantity, deduction.enterPrice]
+                  );
+                }
+              }
+            }
+
+            await client.query('COMMIT');
+          } catch (e) {
+            await client.query('ROLLBACK');
+            throw e; // rethrow to be caught by outer catch
+          } finally {
+            client.release();
+          }
 
         } else if (operation === 'UPDATE') {
           // Dynamic UPDATE is tricky with raw SQL without a helper, but workable.

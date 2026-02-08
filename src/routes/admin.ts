@@ -164,4 +164,15 @@ router.delete('/products/:id', async (req: Request, res: Response) => {
     }
 });
 
+import { InventoryController } from '../controllers/inventoryController.js';
+import { PriceController } from '../controllers/priceController.js';
+
+// 📦 Inventory Management
+router.post('/inventory/arrival', InventoryController.addArrival);
+router.get('/inventory/stock/:productId', InventoryController.getStock);
+
+// 💰 Price Management
+router.post('/prices/set', PriceController.setPrice);
+router.get('/prices/history/:productId', PriceController.getHistory);
+
 export default router;
