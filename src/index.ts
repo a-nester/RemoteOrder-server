@@ -21,6 +21,7 @@ app.use('/uploads', express.static('uploads'));
 app.get('/', (req, res) => {
   res.json({ message: 'RemoteOrder Server with PostgreSQL & Prisma' });
 });
+app.use('/api', syncRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/admin', priceTypeRoutes);
 app.use('/api/price-documents', priceDocumentRoutes);
