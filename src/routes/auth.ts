@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key'; // Should be in env
+const JWT_SECRET: string = process.env.JWT_SECRET || 'your-secret-key'; // Should be in env
 
 // Login Route
 router.post('/login', async (req: Request, res: Response) => {
