@@ -74,7 +74,7 @@ export const updateDocument = async (req: Request, res: Response): Promise<any> 
         // Check if draft
         const docCheck = await pool.query('SELECT status FROM "PriceDocument" WHERE id = $1', [id]);
         if (docCheck.rows.length === 0) return res.status(404).json({ error: 'Document not found' });
-        if (docCheck.rows[0].status !== 'DRAFT') return res.status(400).json({ error: 'Cannot update non-draft document' });
+        // if (docCheck.rows[0].status !== 'DRAFT') return res.status(400).json({ error: 'Cannot update non-draft document' });
 
         const result = await pool.query(`
             UPDATE "PriceDocument"
@@ -107,7 +107,7 @@ export const updateDocumentItems = async (req: Request, res: Response): Promise<
         // Check if draft
         const docCheck = await client.query('SELECT status FROM "PriceDocument" WHERE id = $1', [id]);
         if (docCheck.rows.length === 0) throw new Error('Document not found');
-        if (docCheck.rows[0].status !== 'DRAFT') throw new Error('Cannot update items of non-draft document');
+        // if (docCheck.rows[0].status !== 'DRAFT') throw new Error('Cannot update items of non-draft document');
 
         // Clear existing items (lazy approach, optimized for simplicity)
         // Or upsert. Let's do delete all and insert for now as it handles removals too if the frontend sends the full list.
@@ -151,7 +151,7 @@ export const applyDocument = async (req: Request, res: Response): Promise<any> =
         if (docResult.rows.length === 0) throw new Error('Document not found');
         const doc = docResult.rows[0];
 
-        if (doc.status !== 'DRAFT') throw new Error('Document already applied');
+        // if (doc.status !== 'DRAFT') throw new Error('Document already applied');
 
         const targetSlug = doc.targetPriceSlug;
 
