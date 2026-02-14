@@ -2,17 +2,17 @@ import { Request, Response } from 'express';
 import pool from '../db.js';
 
 export const createDocument = async (req: Request, res: Response): Promise<any> => {
-    const { date, comment, targetPriceTypeId, inputMethod, sourcePriceTypeId, markupPercentage } = req.body;
+    const { date, comment, targetPriceTypeId, inputMethod, sourcePriceTypeId, markupPercentage, roundingMethod } = req.body;
 
     try {
         const result = await pool.query(`
             INSERT INTO "PriceDocument" (
                 "date", "comment", "targetPriceTypeId", "inputMethod", 
-                "sourcePriceTypeId", "markupPercentage", "status", "createdAt"
+                "sourcePriceTypeId", "markupPercentage", "roundingMethod", "status", "createdAt"
             )
-            VALUES ($1, $2, $3, $4, $5, $6, 'DRAFT', NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'DRAFT', NOW())
             RETURNING *
-        `, [date || new Date(), comment, targetPriceTypeId, inputMethod, sourcePriceTypeId, markupPercentage]);
+        `, [date || new Date(), comment, targetPriceTypeId, inputMethod, sourcePriceTypeId, markupPercentage, roundingMethod || 'NONE']);
 
         res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -68,7 +68,7 @@ export const getDocument = async (req: Request, res: Response): Promise<any> => 
 
 export const updateDocument = async (req: Request, res: Response): Promise<any> => {
     const { id } = req.params;
-    const { date, comment, targetPriceTypeId, inputMethod, sourcePriceTypeId, markupPercentage } = req.body;
+    const { date, comment, targetPriceTypeId, inputMethod, sourcePriceTypeId, markupPercentage, roundingMethod } = req.body;
 
     try {
         // Check if draft
@@ -84,10 +84,11 @@ export const updateDocument = async (req: Request, res: Response): Promise<any> 
                 "inputMethod" = COALESCE($4, "inputMethod"),
                 "sourcePriceTypeId" = $5, -- Can be null
                 "markupPercentage" = $6, -- Can be null
+                "roundingMethod" = COALESCE($7, "roundingMethod"),
                 "updatedAt" = NOW()
-            WHERE id = $7
+            WHERE id = $8
             RETURNING *
-        `, [date, comment, targetPriceTypeId, inputMethod, sourcePriceTypeId, markupPercentage, id]);
+        `, [date, comment, targetPriceTypeId, inputMethod, sourcePriceTypeId, markupPercentage, roundingMethod, id]);
 
         res.json(result.rows[0]);
     } catch (error) {
