@@ -38,6 +38,8 @@ router.get('/products', async (req: Request, res: Response) => {
   try {
     const { lastSync, userId } = req.query; // Assuming userId passed for now, or extract from token
     const lastSyncDate = lastSync ? new Date(String(lastSync)) : new Date(0);
+    const adminSecret = req.headers['x-admin-secret'];
+    const isAdmin = adminSecret === process.env.ADMIN_SECRET;
 
     // Fetch user if userId is provided (Simulated Auth)
     // In real app, extracting User from JWT middleware is better.
@@ -54,7 +56,14 @@ router.get('/products', async (req: Request, res: Response) => {
       [lastSyncDate]
     );
 
-    const products = result.rows.map(p => transformProductForUser(p as Product, user));
+    const products = result.rows.map(p => {
+      const transformed = transformProductForUser(p as Product, user);
+      // Ensure prices are included for admin
+      if (isAdmin) {
+        return { ...transformed, prices: p.prices };
+      }
+      return transformed;
+    });
 
     res.json(products);
   } catch (error) {
