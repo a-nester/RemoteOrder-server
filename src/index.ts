@@ -6,6 +6,7 @@ import syncRoutes from './routes/sync.js';
 import adminRoutes from './routes/admin.js';
 import priceTypeRoutes from './routes/priceTypes.js';
 import priceDocumentRoutes from './routes/priceDocumentRoutes.js';
+import authRoutes from './routes/auth.js';
 import path from 'path';
 
 dotenv.config();
@@ -18,9 +19,8 @@ app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
 // Routes
-app.get('/', (req, res) => {
-  res.json({ message: 'RemoteOrder Server with PostgreSQL & Prisma' });
-});
+
+app.use('/api/auth', authRoutes);
 app.use('/api', syncRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/admin', priceTypeRoutes);
