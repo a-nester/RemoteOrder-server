@@ -75,12 +75,18 @@ router.get('/products', async (req: Request, res: Response) => {
     );
 
     const products = result.rows.map(p => {
-      const transformed = transformProductForUser(p as Product, user);
-      // Ensure prices are included for admin
+      // TEMPORARY: Return full object for debugging as requested
+      // const transformed = transformProductForUser(p as Product, user);
+
+      // Ensure prices are included for everyone
+      return p;
+
+      /* Original Logic
       if (isAdmin) {
         return { ...transformed, prices: p.prices };
       }
       return transformed;
+      */
     });
 
     res.json(products);
