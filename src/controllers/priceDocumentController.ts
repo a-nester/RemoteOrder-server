@@ -211,3 +211,57 @@ export const applyDocument = async (req: Request, res: Response): Promise<any> =
         client.release();
     }
 };
+
+export const copyDocument = async (req: Request, res: Response): Promise<any> => {
+    const { id } = req.params;
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // 1. Get Original Document
+        const docResult = await client.query('SELECT * FROM "PriceDocument" WHERE id = $1', [id]);
+        if (docResult.rows.length === 0) throw new Error('Document not found');
+        const originalDoc = docResult.rows[0];
+
+        // 2. Create New Document
+        const newDocResult = await client.query(`
+            INSERT INTO "PriceDocument" (
+                "date", "comment", "targetPriceTypeId", "inputMethod", 
+                "sourcePriceTypeId", "markupPercentage", "roundingMethod", "status", "createdAt"
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'DRAFT', NOW())
+            RETURNING *
+        `, [
+            new Date(), // Current date
+            `Copy of (${new Date(originalDoc.date).toLocaleDateString()}) ${originalDoc.comment || ''}`.trim(),
+            originalDoc.targetPriceTypeId,
+            originalDoc.inputMethod,
+            originalDoc.sourcePriceTypeId,
+            originalDoc.markupPercentage,
+            originalDoc.roundingMethod || 'NONE'
+        ]);
+        const newDoc = newDocResult.rows[0];
+
+        // 3. Get Original Items
+        const itemsResult = await client.query('SELECT * FROM "PriceDocumentItem" WHERE "documentId" = $1', [id]);
+        const originalItems = itemsResult.rows;
+
+        // 4. Insert Copied Items
+        for (const item of originalItems) {
+            await client.query(`
+                INSERT INTO "PriceDocumentItem" ("documentId", "productId", "price")
+                VALUES ($1, $2, $3)
+            `, [newDoc.id, item.productId, item.price]);
+        }
+
+        await client.query('COMMIT');
+        res.status(201).json(newDoc);
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error copying price document:', error);
+        res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to copy document' });
+    } finally {
+        client.release();
+    }
+};
