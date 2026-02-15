@@ -8,11 +8,11 @@ export const createDocument = async (req: Request, res: Response): Promise<any> 
         const result = await pool.query(`
             INSERT INTO "PriceDocument" (
                 "date", "comment", "targetPriceTypeId", "inputMethod", 
-                "sourcePriceTypeId", "markupPercentage", "roundingMethod", "status", "createdAt"
+                "sourcePriceTypeId", "markupPercentage", "roundingMethod", "roundingValue", "status", "createdAt"
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'DRAFT', NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'DRAFT', NOW())
             RETURNING *
-        `, [date || new Date(), comment, targetPriceTypeId, inputMethod, sourcePriceTypeId, markupPercentage, roundingMethod || 'NONE']);
+        `, [date || new Date(), comment, targetPriceTypeId, inputMethod, sourcePriceTypeId, markupPercentage, roundingMethod || 'NONE', req.body.roundingValue]);
 
         res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -85,10 +85,11 @@ export const updateDocument = async (req: Request, res: Response): Promise<any> 
                 "sourcePriceTypeId" = $5, -- Can be null
                 "markupPercentage" = $6, -- Can be null
                 "roundingMethod" = COALESCE($7, "roundingMethod"),
+                "roundingValue" = $8, -- Can be null
                 "updatedAt" = NOW()
-            WHERE id = $8
+            WHERE id = $9
             RETURNING *
-        `, [date, comment, targetPriceTypeId, inputMethod, sourcePriceTypeId, markupPercentage, roundingMethod, id]);
+        `, [date, comment, targetPriceTypeId, inputMethod, sourcePriceTypeId, markupPercentage, roundingMethod, req.body.roundingValue, id]);
 
         res.json(result.rows[0]);
     } catch (error) {
@@ -228,9 +229,9 @@ export const copyDocument = async (req: Request, res: Response): Promise<any> =>
         const newDocResult = await client.query(`
             INSERT INTO "PriceDocument" (
                 "date", "comment", "targetPriceTypeId", "inputMethod", 
-                "sourcePriceTypeId", "markupPercentage", "roundingMethod", "status", "createdAt"
+                "sourcePriceTypeId", "markupPercentage", "roundingMethod", "roundingValue", "status", "createdAt"
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'DRAFT', NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'DRAFT', NOW())
             RETURNING *
         `, [
             new Date(), // Current date
@@ -239,7 +240,8 @@ export const copyDocument = async (req: Request, res: Response): Promise<any> =>
             originalDoc.inputMethod,
             originalDoc.sourcePriceTypeId,
             originalDoc.markupPercentage,
-            originalDoc.roundingMethod || 'NONE'
+            originalDoc.roundingMethod || 'NONE',
+            originalDoc.roundingValue
         ]);
         const newDoc = newDocResult.rows[0];
 
