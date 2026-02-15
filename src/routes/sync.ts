@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import pool from '../db.js';
 import { InventoryService } from '../services/inventoryService.js';
+import jwt from 'jsonwebtoken';
 
 const router = Router();
 
@@ -38,8 +39,25 @@ router.get('/products', async (req: Request, res: Response) => {
   try {
     const { lastSync, userId } = req.query; // Assuming userId passed for now, or extract from token
     const lastSyncDate = lastSync ? new Date(String(lastSync)) : new Date(0);
-    const adminSecret = req.headers['x-admin-secret'];
-    const isAdmin = adminSecret === process.env.ADMIN_SECRET;
+    const adminSecret = req.headers['x-admin-secret'] as string;
+    const authHeader = req.headers.authorization;
+
+    let isAdmin = adminSecret === process.env.ADMIN_SECRET;
+
+    if (!isAdmin && authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      if (token) {
+        try {
+          const secret = process.env.JWT_SECRET || 'your-secret-key';
+          const decoded = jwt.verify(token, secret) as any;
+          if (decoded.role === 'admin') {
+            isAdmin = true;
+          }
+        } catch (e) {
+          // Invalid token
+        }
+      }
+    }
 
     // Fetch user if userId is provided (Simulated Auth)
     // In real app, extracting User from JWT middleware is better.
