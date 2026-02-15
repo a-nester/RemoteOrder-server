@@ -20,11 +20,8 @@ export const adminAuth = (req: AuthRequest, res: Response, next: NextFunction) =
             try {
                 const decoded = jwt.verify(token, JWT_SECRET) as any;
                 if (decoded.role === 'admin' || decoded.role === 'manager') {
-                    // For now, allow admin role. 
-                    if (decoded.role === 'admin') {
-                        req.user = decoded;
-                        return next();
-                    }
+                    req.user = decoded;
+                    return next();
                 }
             } catch (e) {
                 // Token invalid, ignore and try legacy secret or fail
