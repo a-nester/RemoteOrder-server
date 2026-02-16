@@ -184,7 +184,7 @@ router.get('/orders', async (req: Request, res: Response) => {
 				SELECT o.*, c.name as "counterpartyName" 
 				FROM "Order" o
 				LEFT JOIN "Counterparty" c ON c.id = o."counterpartyId"
-				WHERE 1=1
+				WHERE (o.deleted = false OR o.deleted IS NULL)
 			`;
         const params: any[] = [];
         let paramIndex = 1;
@@ -216,6 +216,74 @@ router.get('/orders', async (req: Request, res: Response) => {
     } catch (error) {
         console.error('Get orders error:', error);
         res.status(500).json({ error: 'Failed to get orders' });
+    }
+});
+
+// GET Single Order
+router.get('/orders/:id', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(`
+            SELECT o.*, c.name as "counterpartyName"
+            FROM "Order" o
+            LEFT JOIN "Counterparty" c ON c.id = o."counterpartyId"
+            WHERE o.id = $1
+        `, [id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Get order error:', error);
+        res.status(500).json({ error: 'Failed to get order' });
+    }
+});
+
+// PUT Update Order
+router.put('/orders/:id', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { status, total, counterpartyId } = req.body;
+
+        const result = await pool.query(`
+            UPDATE "Order"
+            SET status = COALESCE($2, status),
+                total = COALESCE($3, total),
+                "counterpartyId" = COALESCE($4, "counterpartyId"),
+                "updatedAt" = NOW()
+            WHERE id = $1
+            RETURNING *
+        `, [id, status, total, counterpartyId]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Update order error:', error);
+        res.status(500).json({ error: 'Failed to update order' });
+    }
+});
+
+// DELETE Order (Soft)
+router.delete('/orders/:id', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(`
+            UPDATE "Order"
+            SET deleted = true, "updatedAt" = NOW()
+            WHERE id = $1
+            RETURNING id
+        `, [id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+        res.json({ success: true, id });
+    } catch (error) {
+        console.error('Delete order error:', error);
+        res.status(500).json({ error: 'Failed to delete order' });
     }
 });
 
