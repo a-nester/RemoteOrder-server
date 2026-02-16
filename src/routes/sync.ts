@@ -235,26 +235,55 @@ router.post('/sync/full', async (req: Request, res: Response) => {
     if (changes && Array.isArray(changes)) {
       // Similar logic to push but using 'client' for transaction
       for (const change of changes) {
-        const { id, operation, data } = change;
+        const { id, operation, data, table } = change; // Added 'table' to destructure
         try {
-          if (operation === 'INSERT') {
-            await client.query(
-              `INSERT INTO "Order" (id, "userId", status, total, items, "updatedAt")
+          if (table === 'Order') { // Assuming 'table' field exists in 'change' object
+            if (operation === 'INSERT') {
+              await client.query(
+                `INSERT INTO "Order" ("id", "userId", "counterpartyId", "status", "total", "items", "updatedAt")
+                         VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                         ON CONFLICT ("id") DO UPDATE SET
+                            "counterpartyId" = EXCLUDED."counterpartyId",
+                            "status" = EXCLUDED."status",
+                            "total" = EXCLUDED."total",
+                            "items" = EXCLUDED."items",
+                            "updatedAt" = NOW()`,
+                [id, userId, data.counterpartyId, data.status || 'pending', data.total || 0, JSON.stringify(data.items || [])]
+              );
+            } else if (operation === 'UPDATE') {
+              await client.query(
+                `UPDATE "Order" 
+                         SET "counterpartyId" = COALESCE($2, "counterpartyId"),
+                             status = COALESCE($3, status),
+                             total = COALESCE($4, total),
+                             items = COALESCE($5, items),
+                             "updatedAt" = NOW()
+                         WHERE id = $1`,
+                [id, data.counterpartyId, data.status, data.total, data.items ? JSON.stringify(data.items) : null]
+              );
+            } else if (operation === 'DELETE') {
+              await client.query('DELETE FROM "Order" WHERE id = $1', [id]);
+            }
+          } else { // Existing logic for other tables or if 'table' is not 'Order'
+            if (operation === 'INSERT') {
+              await client.query(
+                `INSERT INTO "Order" (id, "userId", status, total, items, "updatedAt")
                          VALUES ($1, $2, $3, $4, $5, NOW())`,
-              [id, userId, data.status || 'pending', data.total || 0, JSON.stringify(data.items || [])]
-            );
-          } else if (operation === 'UPDATE') {
-            await client.query(
-              `UPDATE "Order" 
+                [id, userId, data.status || 'pending', data.total || 0, JSON.stringify(data.items || [])]
+              );
+            } else if (operation === 'UPDATE') {
+              await client.query(
+                `UPDATE "Order" 
                          SET status = COALESCE($2, status),
                              total = COALESCE($3, total),
                              items = COALESCE($4, items),
                              "updatedAt" = NOW()
                          WHERE id = $1`,
-              [id, data.status, data.total, data.items ? JSON.stringify(data.items) : null]
-            );
-          } else if (operation === 'DELETE') {
-            await client.query('DELETE FROM "Order" WHERE id = $1', [id]);
+                [id, data.status, data.total, data.items ? JSON.stringify(data.items) : null]
+              );
+            } else if (operation === 'DELETE') {
+              await client.query('DELETE FROM "Order" WHERE id = $1', [id]);
+            }
           }
           changeResults.push({ id, success: true });
         } catch (err) {

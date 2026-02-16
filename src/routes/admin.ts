@@ -175,4 +175,48 @@ router.get('/inventory/stock/:productId', InventoryController.getStock);
 router.post('/prices/set', PriceController.setPrice);
 router.get('/prices/history/:productId', PriceController.getHistory);
 
+// 📦 Orders Management
+router.get('/orders', async (req: Request, res: Response) => {
+    try {
+        const { startDate, endDate, search } = req.query;
+
+        let query = `
+				SELECT o.*, c.name as "counterpartyName" 
+				FROM "Order" o
+				LEFT JOIN "Counterparty" c ON c.id = o."counterpartyId"
+				WHERE 1=1
+			`;
+        const params: any[] = [];
+        let paramIndex = 1;
+
+        if (startDate) {
+            query += ` AND o."createdAt" >= $${paramIndex}`;
+            params.push(startDate);
+            paramIndex++;
+        }
+
+        if (endDate) {
+            const end = new Date(String(endDate));
+            end.setHours(23, 59, 59, 999);
+            query += ` AND o."createdAt" <= $${paramIndex}`;
+            params.push(end.toISOString());
+            paramIndex++;
+        }
+
+        if (search) {
+            query += ` AND (c."name" ILIKE $${paramIndex} OR o."id"::text ILIKE $${paramIndex})`; // Cast o."id" to text for ILIKE
+            params.push(`%${search}%`);
+            paramIndex++;
+        }
+
+        query += ` ORDER BY o."createdAt" DESC`;
+
+        const result = await pool.query(query, params);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Get orders error:', error);
+        res.status(500).json({ error: 'Failed to get orders' });
+    }
+});
+
 export default router;
