@@ -112,10 +112,10 @@ router.post('/sync/push', async (req: Request, res: Response) => {
           try {
             await client.query('BEGIN');
 
-            const fields = ['id', 'userId', 'status', 'total', 'items', 'updatedAt'];
+            const fields = ['id', 'userId', 'counterpartyId', 'status', 'total', 'items', 'updatedAt'];
             const insertQuery = `
-               INSERT INTO "Order" (id, "userId", status, total, items, "updatedAt")
-               VALUES ($1, $2, $3, $4, $5, NOW())
+               INSERT INTO "Order" (id, "userId", "counterpartyId", status, total, items, "updatedAt")
+               VALUES ($1, $2, $3, $4, $5, $6, NOW())
                RETURNING *
              `;
 
@@ -123,6 +123,7 @@ router.post('/sync/push', async (req: Request, res: Response) => {
             result = await client.query(insertQuery, [
               id,
               userId,
+              data.counterpartyId || null,
               data.status || 'pending',
               data.total || 0,
               JSON.stringify(data.items || []), // Keep JSON for compatibility/cache
@@ -168,15 +169,17 @@ router.post('/sync/push', async (req: Request, res: Response) => {
           // For now assuming standard fields update.
           const updateQuery = `
             UPDATE "Order" 
-            SET status = COALESCE($2, status),
-                total = COALESCE($3, total),
-                items = COALESCE($4, items),
+            SET "counterpartyId" = COALESCE($2, "counterpartyId"),
+                status = COALESCE($3, status),
+                total = COALESCE($4, total),
+                items = COALESCE($5, items),
                 "updatedAt" = NOW()
             WHERE id = $1
             RETURNING *
           `;
           result = await pool.query(updateQuery, [
             id,
+            data.counterpartyId,
             data.status,
             data.total,
             data.items ? JSON.stringify(data.items) : null
