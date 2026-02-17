@@ -112,10 +112,10 @@ router.post('/sync/push', async (req: Request, res: Response) => {
           try {
             await client.query('BEGIN');
 
-            const fields = ['id', 'userId', 'counterpartyId', 'status', 'total', 'items', 'updatedAt'];
+            const fields = ['id', 'userId', 'counterpartyId', 'status', 'total', 'items', 'isDeleted', 'updatedAt'];
             const insertQuery = `
-               INSERT INTO "Order" (id, "userId", "counterpartyId", status, total, items, "updatedAt")
-               VALUES ($1, $2, $3, $4, $5, $6, NOW())
+               INSERT INTO "Order" (id, "userId", "counterpartyId", status, total, items, "isDeleted", "updatedAt")
+               VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
                RETURNING *
              `;
 
@@ -127,6 +127,7 @@ router.post('/sync/push', async (req: Request, res: Response) => {
               data.status || 'pending',
               data.total || 0,
               JSON.stringify(data.items || []), // Keep JSON for compatibility/cache
+              data.isDeleted ? true : false
             ]);
 
             // 2. Process Items (Just Save, No Stock Deduction)
@@ -158,6 +159,7 @@ router.post('/sync/push', async (req: Request, res: Response) => {
                 status = COALESCE($3, status),
                 total = COALESCE($4, total),
                 items = COALESCE($5, items),
+                "isDeleted" = COALESCE($6, "isDeleted"),
                 "updatedAt" = NOW()
             WHERE id = $1
             RETURNING *
@@ -167,10 +169,16 @@ router.post('/sync/push', async (req: Request, res: Response) => {
             data.counterpartyId,
             data.status,
             data.total,
-            data.items ? JSON.stringify(data.items) : null
+            data.items ? JSON.stringify(data.items) : null,
+            data.isDeleted
           ]);
 
         } else if (operation === 'DELETE') {
+          // Hard Delete - Admin Only
+          const userCheck = await pool.query('SELECT role FROM "User" WHERE id = $1', [userId]);
+          if (userCheck.rows[0]?.role !== 'admin') {
+            throw new Error("Access denied: Only admins can perform hard delete");
+          }
           result = await pool.query('DELETE FROM "Order" WHERE id = $1 RETURNING *', [id]);
         }
 

@@ -178,16 +178,20 @@ router.get('/prices/history/:productId', PriceController.getHistory);
 // 📦 Orders Management
 router.get('/orders', async (req: Request, res: Response) => {
     try {
-        const { startDate, endDate, search } = req.query;
+        const { startDate, endDate, search, includeDeleted } = req.query;
 
         let query = `
 				SELECT o.*, c.name as "counterpartyName" 
 				FROM "Order" o
 				LEFT JOIN "Counterparty" c ON c.id = o."counterpartyId"
-				WHERE (o.deleted = false OR o.deleted IS NULL)
+				WHERE 1=1
 			`;
         const params: any[] = [];
         let paramIndex = 1;
+
+        if (includeDeleted !== 'true') {
+            query += ` AND (o."isDeleted" = false OR o."isDeleted" IS NULL)`;
+        }
 
         if (startDate) {
             query += ` AND o."createdAt" >= $${paramIndex}`;
@@ -204,7 +208,7 @@ router.get('/orders', async (req: Request, res: Response) => {
         }
 
         if (search) {
-            query += ` AND (c."name" ILIKE $${paramIndex} OR o."id"::text ILIKE $${paramIndex})`; // Cast o."id" to text for ILIKE
+            query += ` AND (c."name" ILIKE $${paramIndex} OR o."id"::text ILIKE $${paramIndex})`;
             params.push(`%${search}%`);
             paramIndex++;
         }
@@ -244,17 +248,18 @@ router.get('/orders/:id', async (req: Request, res: Response) => {
 router.put('/orders/:id', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { status, total, counterpartyId } = req.body;
+        const { status, total, counterpartyId, isDeleted } = req.body;
 
         const result = await pool.query(`
             UPDATE "Order"
             SET status = COALESCE($2, status),
                 total = COALESCE($3, total),
                 "counterpartyId" = COALESCE($4, "counterpartyId"),
+                "isDeleted" = COALESCE($5, "isDeleted"),
                 "updatedAt" = NOW()
             WHERE id = $1
             RETURNING *
-        `, [id, status, total, counterpartyId]);
+        `, [id, status, total, counterpartyId, isDeleted]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Order not found' });
@@ -272,7 +277,7 @@ router.delete('/orders/:id', async (req: Request, res: Response) => {
         const { id } = req.params;
         const result = await pool.query(`
             UPDATE "Order"
-            SET deleted = true, "updatedAt" = NOW()
+            SET "isDeleted" = true, "updatedAt" = NOW()
             WHERE id = $1
             RETURNING id
         `, [id]);
@@ -283,6 +288,35 @@ router.delete('/orders/:id', async (req: Request, res: Response) => {
         res.json({ success: true, id });
     } catch (error) {
         console.error('Delete order error:', error);
+        res.status(500).json({ error: 'Failed to delete order' });
+    }
+});
+
+// DELETE Order (Hard)
+router.delete('/orders/:id/hard', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        // Check role again? Already checked by adminAuth middleware, so user is admin or manager.
+        // Requirement: "Hard delete only for admin". Manager? 
+        // adminAuth allows 'admin' or 'manager'.
+        // I should strict check 'admin' here if manager shouldn't delete.
+        const user = (req as any).user;
+        if (user.role !== 'admin') {
+            return res.status(403).json({ error: 'Access denied: Only admins can perform hard delete' });
+        }
+
+        const result = await pool.query(`
+            DELETE FROM "Order"
+            WHERE id = $1
+            RETURNING id
+        `, [id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+        res.json({ success: true, id });
+    } catch (error) {
+        console.error('Hard delete order error:', error);
         res.status(500).json({ error: 'Failed to delete order' });
     }
 });
