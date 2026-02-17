@@ -129,30 +129,15 @@ router.post('/sync/push', async (req: Request, res: Response) => {
               JSON.stringify(data.items || []), // Keep JSON for compatibility/cache
             ]);
 
-            // 2. Process Items (FIFO)
+            // 2. Process Items (Just Save, No Stock Deduction)
             if (data.items && Array.isArray(data.items)) {
               for (const item of data.items) {
-                // item: { productId, quantity, price }
-                // Deduct stock
-                const deductions = await InventoryService.deductStock(client, item.id, item.count); // Assuming item.id is productId and item.count is quantity based on typical structure. Need to verify structure.
-
                 // Create Normalized OrderItem
-                const orderItemResult = await client.query(
+                await client.query(
                   `INSERT INTO "OrderItem" ("id", "orderId", "productId", "quantity", "sellPrice", "createdAt")
-                         VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())
-                         RETURNING id`,
+                         VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())`,
                   [id, item.id, item.count, item.price]
                 );
-                const orderItemId = orderItemResult.rows[0].id;
-
-                // Create OrderItemBatch links
-                for (const deduction of deductions) {
-                  await client.query(
-                    `INSERT INTO "OrderItemBatch" ("id", "orderItemId", "productBatchId", "quantity", "enterPrice", "createdAt")
-                             VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())`,
-                    [orderItemId, deduction.batchId, deduction.quantity, deduction.enterPrice]
-                  );
-                }
               }
             }
 
