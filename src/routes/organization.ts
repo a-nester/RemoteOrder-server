@@ -1,11 +1,11 @@
 import express from 'express';
 import pool from '../db.js';
-import { authenticateToken } from '../middleware/auth.js';
+import { userAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // Get Organization Details
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', userAuth, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM "Organization" LIMIT 1');
         if (result.rows.length === 0) {
@@ -19,7 +19,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // Update Organization Details
-router.put('/', authenticateToken, async (req, res) => {
+router.put('/', userAuth, async (req, res) => {
     const { id, name, fullDetails } = req.body;
     try {
         const result = await pool.query(
@@ -34,7 +34,7 @@ router.put('/', authenticateToken, async (req, res) => {
 });
 
 // Get Warehouses
-router.get('/warehouses', authenticateToken, async (req, res) => {
+router.get('/warehouses', userAuth, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM "Warehouse" WHERE "isDeleted" = FALSE ORDER BY "createdAt" DESC');
         res.json(result.rows);
@@ -45,7 +45,7 @@ router.get('/warehouses', authenticateToken, async (req, res) => {
 });
 
 // Create Warehouse
-router.post('/warehouses', authenticateToken, async (req, res) => {
+router.post('/warehouses', userAuth, async (req, res) => {
     const { name, address, organizationId } = req.body;
     try {
         const result = await pool.query(
@@ -60,7 +60,7 @@ router.post('/warehouses', authenticateToken, async (req, res) => {
 });
 
 // Update Warehouse
-router.put('/warehouses/:id', authenticateToken, async (req, res) => {
+router.put('/warehouses/:id', userAuth, async (req, res) => {
     const { name, address } = req.body;
     const { id } = req.params;
     try {
