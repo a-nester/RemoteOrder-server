@@ -3,6 +3,7 @@ import pool from '../db.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { adminAuth } from '../middleware/auth.js';
 
 // removed MulterRequest interface to avoid conflict
@@ -175,6 +176,63 @@ router.get('/inventory/stock/:productId', InventoryController.getStock);
 router.post('/prices/set', PriceController.setPrice);
 router.get('/prices/history/:productId', PriceController.getHistory);
 
+// ➕ Create Order
+router.post('/orders', async (req: Request, res: Response) => {
+    const client = await pool.connect();
+    try {
+        const { date, counterpartyId, status, items, comment, amount, currency } = req.body;
+        const userId = (req as any).user.id;
+        const id = crypto.randomUUID();
+
+        await client.query('BEGIN');
+
+        const insertQuery = `
+            INSERT INTO "Order" (id, "userId", "counterpartyId", status, total, items, comment, "createdAt", "updatedAt")
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+            RETURNING *
+        `;
+
+        const result = await client.query(insertQuery, [
+            id,
+            userId,
+            counterpartyId,
+            status || 'NEW',
+            amount || 0,
+            JSON.stringify(items || []),
+            comment,
+            date ? new Date(date) : new Date()
+        ]);
+
+        // 2. Insert Items
+        if (items && Array.isArray(items)) {
+            for (const item of items) {
+                await client.query(
+                    `INSERT INTO "OrderItem" ("id", "orderId", "productId", "quantity", "sellPrice", "createdAt")
+                     VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())`,
+                    [id, item.productId, item.quantity, item.price]
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+
+        // Fetch full order with counterparty name
+        const fullOrder = await client.query(`
+            SELECT o.*, c.name as "counterpartyName"
+            FROM "Order" o
+            LEFT JOIN "Counterparty" c ON c.id = o."counterpartyId"
+            WHERE o.id = $1
+        `, [id]);
+
+        res.status(201).json(fullOrder.rows[0]);
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Create order error:', error);
+        res.status(500).json({ error: 'Failed to create order' });
+    } finally {
+        client.release();
+    }
+});
 // 📦 Orders Management
 router.get('/orders', async (req: Request, res: Response) => {
     try {
