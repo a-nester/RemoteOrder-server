@@ -235,17 +235,6 @@ router.post('/sync/full', async (req: Request, res: Response) => {
         try {
           if (table === 'Order') { // Assuming 'table' field exists in 'change' object
             if (operation === 'INSERT') {
-              await client.query(
-                `INSERT INTO "Order" ("id", "userId", "counterpartyId", "status", "total", "items", "updatedAt")
-                         VALUES ($1, $2, $3, $4, $5, $6, NOW())
-                         ON CONFLICT ("id") DO UPDATE SET
-                            "counterpartyId" = EXCLUDED."counterpartyId",
-                            "status" = EXCLUDED."status",
-                            "total" = EXCLUDED."total",
-                            "items" = EXCLUDED."items",
-                            "updatedAt" = NOW()`,
-                [id, userId, data.counterpartyId, data.status || 'pending', data.total || 0, JSON.stringify(data.items || [])]
-              );
             } else if (operation === 'UPDATE') {
               await client.query(
                 `UPDATE "Order" 
