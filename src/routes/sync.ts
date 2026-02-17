@@ -116,6 +116,13 @@ router.post('/sync/push', async (req: Request, res: Response) => {
             const insertQuery = `
                INSERT INTO "Order" (id, "userId", "counterpartyId", status, total, items, "isDeleted", "updatedAt")
                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+               ON CONFLICT (id) DO UPDATE SET
+                  "counterpartyId" = EXCLUDED."counterpartyId",
+                  status = EXCLUDED.status,
+                  total = EXCLUDED.total,
+                  items = EXCLUDED.items,
+                  "isDeleted" = EXCLUDED."isDeleted",
+                  "updatedAt" = NOW()
                RETURNING *
              `;
 
