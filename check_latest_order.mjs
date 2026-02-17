@@ -13,28 +13,15 @@ async function checkLatestOrder() {
     const client = await pool.connect();
     
     const res = await client.query(`
-      SELECT o.id, o."createdAt", o.total, o.status, o."counterpartyId", c.name as "counterpartyName", o.items
+      SELECT o.id, o."createdAt", o.total, o.status, o."counterpartyId", c.name as "counterpartyName"
       FROM "Order" o
       LEFT JOIN "Counterparty" c ON c.id = o."counterpartyId"
       ORDER BY o."createdAt" DESC
-      LIMIT 1
+      LIMIT 5
     `);
 
-    if (res.rows.length === 0) {
-      console.log("No orders found.");
-    } else {
-      const order = res.rows[0];
-      console.log("Latest Order:");
-      console.log(JSON.stringify(order, null, 2));
-      
-      if (order.counterpartyId && !order.counterpartyName) {
-          console.error("WARNING: Order has counterpartyId but no matching Counterparty found!");
-      } else if (!order.counterpartyId) {
-          console.error("WARNING: Order is missing counterpartyId!");
-      } else {
-          console.log("SUCCESS: Order has valid Counterparty association.");
-      }
-    }
+    console.log("Last 10 Orders:");
+    console.table(res.rows);
 
     client.release();
   } catch (err) {
