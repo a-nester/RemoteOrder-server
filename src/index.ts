@@ -7,6 +7,8 @@ import adminRoutes from './routes/admin.js';
 import priceTypeRoutes from './routes/priceTypes.js';
 import priceDocumentRoutes from './routes/priceDocumentRoutes.js';
 import counterpartyRoutes from './routes/counterparties.js';
+import organizationRoutes from './routes/organization.js';
+import realizationRoutes from './routes/realization.js';
 import authRoutes from './routes/auth.js';
 import path from 'path';
 
@@ -27,6 +29,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/admin', priceTypeRoutes);
 app.use('/api/price-documents', priceDocumentRoutes);
 app.use('/api', counterpartyRoutes);
+app.use('/api/organization', organizationRoutes);
+app.use('/api/realizations', realizationRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
