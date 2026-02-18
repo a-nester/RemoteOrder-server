@@ -9,6 +9,7 @@ import priceDocumentRoutes from './routes/priceDocumentRoutes.js';
 import counterpartyRoutes from './routes/counterparties.js';
 import organizationRoutes from './routes/organization.js';
 import realizationRoutes from './routes/realization.js';
+import goodsReceiptRoutes from './routes/goodsReceipt.js';
 import authRoutes from './routes/auth.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -40,6 +41,7 @@ app.use('/api/price-documents', priceDocumentRoutes);
 app.use('/api', counterpartyRoutes);
 app.use('/api/organization', organizationRoutes);
 app.use('/api/realizations', realizationRoutes);
+app.use('/api/goods-receipt', goodsReceiptRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

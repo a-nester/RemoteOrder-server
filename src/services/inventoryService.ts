@@ -4,12 +4,15 @@ export class InventoryService {
     /**
      * Add new stock batch
      */
-    static async addStock(client: any, productId: string, quantity: number, enterPrice: number) {
+    /**
+     * Add new stock batch
+     */
+    static async addStock(client: any, productId: string, quantity: number, enterPrice: number, goodsReceiptId?: string) {
         const result = await client.query(
-            `INSERT INTO "ProductBatch" ("productId", "quantityTotal", "quantityLeft", "enterPrice", "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, $4, NOW(), NOW())
+            `INSERT INTO "ProductBatch" ("productId", "quantityTotal", "quantityLeft", "enterPrice", "goodsReceiptId", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
        RETURNING *`,
-            [productId, quantity, quantity, enterPrice]
+            [productId, quantity, quantity, enterPrice, goodsReceiptId || null]
         );
         return result.rows[0];
     }

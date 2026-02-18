@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "seed": "ts-node src/seed.ts",
     "migrate:v5": "node --loader ts-node/esm src/migrate_v5.ts",
-    "migrate:users": "node --loader ts-node/esm src/migrate_users.ts"
+    "migrate:users": "node --loader ts-node/esm src/migrate_users.ts",
+    "migrate:v8": "node --loader ts-node/esm src/migrate_v8.ts"
   },
   "keywords": [],
   "author": "",
