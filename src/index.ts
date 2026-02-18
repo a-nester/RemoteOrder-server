@@ -60,6 +60,7 @@ app.get(/(.*)/, (req, res) => {
 const start = async () => {
   try {
     await connectDB();
+    console.log('Starting RemoteOrder Server v5...');
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
     });
