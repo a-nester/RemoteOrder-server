@@ -28,7 +28,8 @@ app.use('/uploads', express.static('uploads'));
 
 // Serve static files from the React app
 // Using local copy of build for Render deployment
-const clientBuildPath = path.join(__dirname, '../client_dist');
+// Copied to dist/client_dist by build script
+const clientBuildPath = path.join(__dirname, 'client_dist');
 app.use(express.static(clientBuildPath));
 
 // Routes
