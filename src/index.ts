@@ -26,8 +26,8 @@ app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
 // Serve static files from the React app
-// Adjust path to point to RemoteOrderWeb/dist relative to built server file or source
-const clientBuildPath = path.join(__dirname, '../../RemoteOrderWeb/dist');
+// Using local copy of build for Render deployment
+const clientBuildPath = path.join(__dirname, '../client_dist');
 app.use(express.static(clientBuildPath));
 
 // Routes
