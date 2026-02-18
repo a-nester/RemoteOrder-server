@@ -48,7 +48,9 @@ app.get('/health', (req, res) => {
 
 // The "catchall" handler: for any request that doesn't
 // match one above, send back React's index.html file.
-app.get('*', (req, res) => {
+// The "catchall" handler: for any request that doesn't
+// match one above, send back React's index.html file.
+app.get(/(.*)/, (req, res) => {
   if (req.path.startsWith('/api')) {
     return res.status(404).json({ message: 'API Endpoint not found' });
   }
