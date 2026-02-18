@@ -11,6 +11,10 @@ import organizationRoutes from './routes/organization.js';
 import realizationRoutes from './routes/realization.js';
 import authRoutes from './routes/auth.js';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -20,6 +24,11 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
+
+// Serve static files from the React app
+// Adjust path to point to RemoteOrderWeb/dist relative to built server file or source
+const clientBuildPath = path.join(__dirname, '../../RemoteOrderWeb/dist');
+app.use(express.static(clientBuildPath));
 
 // Routes
 
@@ -35,6 +44,15 @@ app.use('/api/realizations', realizationRoutes);
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date() });
+});
+
+// The "catchall" handler: for any request that doesn't
+// match one above, send back React's index.html file.
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ message: 'API Endpoint not found' });
+  }
+  res.sendFile(path.join(clientBuildPath, 'index.html'));
 });
 
 const start = async () => {
