@@ -50,7 +50,7 @@ router.get('/products', async (req: Request, res: Response) => {
         try {
           const secret = process.env.JWT_SECRET || 'your-secret-key';
           const decoded = jwt.verify(token, secret) as any;
-          if (decoded.role === 'admin') {
+          if (decoded.role === 'admin' || decoded.role === 'manager') {
             isAdmin = true;
           }
         } catch (e) {
