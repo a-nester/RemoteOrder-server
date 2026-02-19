@@ -34,6 +34,7 @@ const createTables = async () => {
                 "total" DECIMAL(10, 2) DEFAULT 0,
                 "currency" TEXT DEFAULT 'UAH',
                 "items" JSONB,
+                "comment" TEXT,
                 "createdAt" TIMESTAMPTZ DEFAULT NOW(),
                 "updatedAt" TIMESTAMPTZ DEFAULT NOW(),
                 "deleted" BOOLEAN DEFAULT false
