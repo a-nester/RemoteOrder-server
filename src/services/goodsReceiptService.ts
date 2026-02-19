@@ -1,5 +1,6 @@
 import pool from '../db.js';
 import { InventoryService } from './inventoryService.js';
+import { generateDocNumber } from '../utils/docNumberGenerator.js';
 
 export class GoodsReceiptService {
 
@@ -8,7 +9,10 @@ export class GoodsReceiptService {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            const { number, date, warehouseId, providerId, priceTypeId, comment, items } = data;
+            const { date, warehouseId, providerId, priceTypeId, comment, items } = data;
+
+            // Generate Number
+            const number = await generateDocNumber('GoodsReceipt', date ? new Date(date) : new Date(), 'number');
 
             // 1. Create Header
             const result = await client.query(

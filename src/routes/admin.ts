@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { adminAuth } from '../middleware/auth.js';
+import { generateDocNumber } from '../utils/docNumberGenerator.js';
 
 // removed MulterRequest interface to avoid conflict
 
@@ -199,13 +200,16 @@ router.post('/orders', async (req: Request, res: Response) => {
         }
         const id = crypto.randomUUID();
 
-        console.log(`[POST /orders] Creating order ${id} for user ${userId}, counterparty ${counterpartyId}`);
+        // Generate Document Number
+        const docNumber = await generateDocNumber('Order', date ? new Date(date) : new Date());
+
+        console.log(`[POST /orders] Creating order ${id} (No. ${docNumber}) for user ${userId}, counterparty ${counterpartyId}`);
 
         await client.query('BEGIN');
 
         const insertQuery = `
-            INSERT INTO "Order" (id, "userId", "counterpartyId", status, total, items, comment, "createdAt", "updatedAt")
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+            INSERT INTO "Order" (id, "userId", "counterpartyId", status, total, items, comment, "docNumber", "createdAt", "updatedAt")
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
             RETURNING *
         `;
 
@@ -217,6 +221,7 @@ router.post('/orders', async (req: Request, res: Response) => {
             amount || 0,
             JSON.stringify(items || []),
             comment,
+            docNumber,
             date ? new Date(date) : new Date()
         ]);
 

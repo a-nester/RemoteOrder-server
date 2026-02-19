@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../db.js';
 import { userAuth, AuthRequest } from '../middleware/auth.js';
+import { generateDocNumber } from '../utils/docNumberGenerator.js';
 
 const router = express.Router();
 
@@ -84,8 +85,8 @@ router.post('/from-order/:orderId', userAuth, async (req, res) => {
             if ((whRes.rowCount || 0) > 0) warehouseId = whRes.rows[0].id;
         }
 
-        // 4. Generate Number (Simple Auto-increment logic or timestamp for MVP)
-        const number = `R-${Date.now().toString().slice(-6)}`;
+        // 4. Generate Number
+        const number = await generateDocNumber('Realization', new Date(), 'number');
 
         // 5. Create Realization Header
         const userId = (req as AuthRequest).user?.id;
