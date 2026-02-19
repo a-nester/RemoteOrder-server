@@ -58,7 +58,16 @@ app.get(/(.*)/, (req, res) => {
   if (req.path.startsWith('/api')) {
     return res.status(404).json({ message: 'API Endpoint not found' });
   }
-  res.sendFile(path.join(clientBuildPath, 'index.html'));
+  const indexPath = path.join(clientBuildPath, 'index.html');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error('Error sending index.html:', err);
+      // Don't crash if headers are already sent or if file is missing
+      if (!res.headersSent) {
+        res.status(404).send('Client application not found. Please ensure the client build is generated and copied to dist/client_dist.');
+      }
+    }
+  });
 });
 
 const start = async () => {
