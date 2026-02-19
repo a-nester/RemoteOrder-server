@@ -327,28 +327,72 @@ router.get('/orders/:id', async (req: Request, res: Response) => {
 
 // PUT Update Order
 router.put('/orders/:id', async (req: Request, res: Response) => {
+    const client = await pool.connect();
     try {
         const { id } = req.params;
-        const { status, total, counterpartyId, isDeleted } = req.body;
+        const { status, total, amount, counterpartyId, isDeleted, items, comment } = req.body;
 
-        const result = await pool.query(`
+        await client.query('BEGIN');
+
+        // Update Order header
+        const result = await client.query(`
             UPDATE "Order"
             SET status = COALESCE($2, status),
                 total = COALESCE($3, total),
                 "counterpartyId" = COALESCE($4, "counterpartyId"),
                 "isDeleted" = COALESCE($5, "isDeleted"),
+                "items" = COALESCE($6, "items"),
+                "comment" = COALESCE($7, "comment"),
                 "updatedAt" = NOW()
             WHERE id = $1
             RETURNING *
-        `, [id, status, total, counterpartyId, isDeleted]);
+        `, [
+            id,
+            status,
+            amount !== undefined ? amount : total,
+            counterpartyId,
+            isDeleted,
+            items ? JSON.stringify(items) : null,
+            comment
+        ]);
 
         if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Order not found' });
         }
-        res.json(result.rows[0]);
+
+        // Synchronize OrderItem table if items were provided
+        if (items && Array.isArray(items)) {
+            // Delete existing items
+            await client.query('DELETE FROM "OrderItem" WHERE "orderId" = $1', [id]);
+
+            // Insert new items
+            for (const item of items) {
+                await client.query(
+                    `INSERT INTO "OrderItem" ("id", "orderId", "productId", "quantity", "sellPrice", "createdAt")
+                     VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())`,
+                    [id, item.productId || item.id, item.quantity, item.price]
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+
+        // Fetch full order with counterparty name to return
+        const fullOrder = await client.query(`
+            SELECT o.*, c.name as "counterpartyName"
+            FROM "Order" o
+            LEFT JOIN "Counterparty" c ON c.id = o."counterpartyId"
+            WHERE o.id = $1
+        `, [id]);
+
+        res.json(fullOrder.rows[0]);
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Update order error:', error);
         res.status(500).json({ error: 'Failed to update order' });
+    } finally {
+        client.release();
     }
 });
 
