@@ -50,6 +50,7 @@ router.get('/products', async (req: Request, res: Response) => {
         try {
           const secret = process.env.JWT_SECRET || 'your-secret-key';
           const decoded = jwt.verify(token, secret) as any;
+          console.log('[GET /products] User Role:', decoded.role, 'Decoded:', decoded); // Debug log
           if (decoded.role === 'admin' || decoded.role === 'manager') {
             isAdmin = true;
           }
@@ -75,6 +76,7 @@ router.get('/products', async (req: Request, res: Response) => {
     );
 
     const products = result.rows.map(p => {
+      if (p.name.includes('RT12') || p.name.includes('Золота')) console.log('[GET /products] DB prices for:', p.name, p.prices); // Debug
       const transformed = transformProductForUser(p as Product, user);
       if (isAdmin) {
         return { ...transformed, prices: p.prices };
