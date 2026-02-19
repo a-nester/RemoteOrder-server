@@ -178,11 +178,14 @@ router.get('/prices/history/:productId', PriceController.getHistory);
 
 // ➕ Create Order
 router.post('/orders', async (req: Request, res: Response) => {
+    console.log('[POST /orders] Body:', JSON.stringify(req.body, null, 2));
     const client = await pool.connect();
     try {
         const { date, counterpartyId, status, items, comment, amount, currency } = req.body;
         const userId = (req as any).user.id;
         const id = crypto.randomUUID();
+
+        console.log(`[POST /orders] Creating order ${id} for user ${userId}, counterparty ${counterpartyId}`);
 
         await client.query('BEGIN');
 

@@ -92,12 +92,11 @@ router.post('/from-order/:orderId', userAuth, async (req, res) => {
 
         const realizationRes = await client.query(`
             INSERT INTO "Realization" (
-                "userId", -- Assuming user ownership if needed, or link to creator
                 "date", "number", "counterpartyId", "warehouseId", "status", "amount", "currency", "createdBy"
             ) VALUES (
-               $1, NOW(), $2, $3, $4, 'DRAFT', $5, $6, $7
+               NOW(), $1, $2, $3, 'DRAFT', $4, $5, $6
             ) RETURNING id
-        `, [order.userId, number, order.counterpartyId, warehouseId, order.total, order.currency, userId]);
+        `, [number, order.counterpartyId, warehouseId, order.total, order.currency, userId]);
 
         const realizationId = realizationRes.rows[0].id;
 
