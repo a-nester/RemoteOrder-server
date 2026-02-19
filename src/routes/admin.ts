@@ -186,7 +186,9 @@ router.post('/orders', async (req: Request, res: Response) => {
 
         // If using admin secret (legacy), user.id might be undefined.
         // Use a placeholder UUID for system admin actions.
-        if (!userId && (req as any).user.role === 'admin') {
+        // If using admin secret (legacy) or if ID is missing for some reason,
+        // Use a placeholder UUID for system admin/manager actions.
+        if (!userId && ((req as any).user.role === 'admin' || (req as any).user.role === 'manager')) {
             // System Admin UUID
             userId = '00000000-0000-0000-0000-000000000000';
         }
