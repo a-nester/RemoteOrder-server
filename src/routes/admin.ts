@@ -182,7 +182,19 @@ router.post('/orders', async (req: Request, res: Response) => {
     const client = await pool.connect();
     try {
         const { date, counterpartyId, status, items, comment, amount, currency } = req.body;
-        const userId = (req as any).user.id;
+        let userId = (req as any).user.id;
+
+        // If using admin secret (legacy), user.id might be undefined.
+        // Use a placeholder UUID for system admin actions.
+        if (!userId && (req as any).user.role === 'admin') {
+            // System Admin UUID
+            userId = '00000000-0000-0000-0000-000000000000';
+        }
+
+        if (!userId) {
+            console.error('[POST /orders] Missing userId in request');
+            return res.status(400).json({ error: 'User ID is required to create an order' });
+        }
         const id = crypto.randomUUID();
 
         console.log(`[POST /orders] Creating order ${id} for user ${userId}, counterparty ${counterpartyId}`);
