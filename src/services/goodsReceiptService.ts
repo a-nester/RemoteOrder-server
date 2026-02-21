@@ -10,7 +10,7 @@ export class GoodsReceiptService {
         try {
             await client.query('BEGIN');
             console.log('Creating GoodsReceipt...', data);
-            const { date, warehouseId, providerId, priceTypeId, comment, items } = data;
+            const { date, warehouseId, providerId, comment, items } = data;
 
             // Generate Number
             const number = await generateDocNumber('GoodsReceipt', date ? new Date(date) : new Date(), 'number');
