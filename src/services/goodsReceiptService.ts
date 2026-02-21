@@ -149,7 +149,7 @@ export class GoodsReceiptService {
         const itemsRes = await pool.query(`
     SELECT gri.*, p.name as "productName"
     FROM "GoodsReceiptItem" gri
-    LEFT JOIN "Product" p ON p.id = gri."productId"
+    LEFT JOIN "Product" p ON p.id = gri."productId"::uuid
     WHERE gri."goodsReceiptId" = $1
   `, [id]);
 
