@@ -18,10 +18,10 @@ export class GoodsReceiptService {
             // 1. Create Header
             const result = await client.query(
                 `INSERT INTO "GoodsReceipt" 
-                ("number", "date", "warehouseId", "providerId", "priceTypeId", "comment", "status", "createdBy")
+                ("number", "date", "warehouseId", "providerId", "comment", "status", "createdBy")
                 VALUES ($1, $2, $3, $4, $5, $6, 'SAVED', $7)
                 RETURNING *`,
-                [number, date, warehouseId, providerId, priceTypeId || null, comment, userId]
+                [number, date, warehouseId, providerId, comment, userId]
             );
             const receipt = result.rows[0];
 
@@ -56,14 +56,14 @@ export class GoodsReceiptService {
             if (current.rows[0].status === 'POSTED') throw new Error('Cannot edit POSTED document');
 
             await client.query('BEGIN');
-            const { number, date, warehouseId, providerId, priceTypeId, comment, items } = data;
+            const { number, date, warehouseId, providerId, comment, items } = data;
 
             // 1. Update Header
             await client.query(
                 `UPDATE "GoodsReceipt" 
-                SET "number"=$1, "date"=$2, "warehouseId"=$3, "providerId"=$4, "priceTypeId"=$5, "comment"=$6, "updatedAt"=NOW()
+                SET "number"=$1, "date"=$2, "warehouseId"=$3, "providerId"=$4, "comment"=$6, "updatedAt"=NOW()
                 WHERE id = $7`,
-                [number, date, warehouseId, providerId, priceTypeId || null, comment, id]
+                [number, date, warehouseId, providerId, comment, id]
             );
 
             // 2. Replace Items (Delete all & Insert new)
