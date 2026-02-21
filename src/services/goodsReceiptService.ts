@@ -9,6 +9,7 @@ export class GoodsReceiptService {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
+            console.log('Creating GoodsReceipt...', data);
             const { date, warehouseId, providerId, priceTypeId, comment, items } = data;
 
             // Generate Number
