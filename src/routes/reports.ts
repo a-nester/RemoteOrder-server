@@ -19,7 +19,7 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
 
         let warehouseFilter = '';
         if (warehouseId) {
-            warehouseFilter = ` AND gr."warehouseId" = $2`;
+            warehouseFilter = ` AND gr."warehouseId"::text = $2`;
             params.push(warehouseId);
         }
 
@@ -33,10 +33,10 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
                     COALESCE(
                         (SELECT SUM(oib.quantity) 
                          FROM "OrderItemBatch" oib 
-                         WHERE oib."productBatchId" = pb.id AND oib."createdAt" <= $1
+                         WHERE oib."productBatchId"::text = pb.id::text AND oib."createdAt" <= $1
                         ), 0) as outgoing
                 FROM "ProductBatch" pb
-                LEFT JOIN "GoodsReceipt" gr ON gr.id = pb."goodsReceiptId"
+                LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
                 WHERE 1=1 ${warehouseFilter}
             )
             SELECT 
@@ -46,8 +46,8 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
                 w.name as "warehouseName",
                 SUM(bb.incoming - bb.outgoing) as balance
             FROM BatchBalances bb
-            LEFT JOIN "Product" p ON p.id::text = bb."productId"
-            LEFT JOIN "Warehouse" w ON w.id = bb."warehouseId"
+            LEFT JOIN "Product" p ON p.id::text = bb."productId"::text
+            LEFT JOIN "Warehouse" w ON w.id::text = bb."warehouseId"::text
             GROUP BY bb."productId", p.name, p.category, bb."warehouseId", w.name
             HAVING SUM(bb.incoming - bb.outgoing) != 0
             ORDER BY w.name, p.name
