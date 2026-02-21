@@ -14,7 +14,8 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
         const warehouseId = req.query.warehouseId as string;
 
         // Default to current date if none provided
-        const targetDate = dateParam ? new Date(dateParam) : new Date();
+        // Default to current date if none provided
+        const targetDate = dateParam ? dateParam : new Date().toISOString().split('T')[0];
         const params: any[] = [targetDate];
 
         let warehouseFilter = '';
@@ -29,11 +30,11 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
                     pb.id as batch_id,
                     pb."productId",
                     gr."warehouseId",
-                    CASE WHEN pb."createdAt" <= $1 THEN pb."quantityTotal" ELSE 0 END as incoming,
+                    CASE WHEN pb."createdAt"::date <= $1::date THEN pb."quantityTotal" ELSE 0 END as incoming,
                     COALESCE(
                         (SELECT SUM(oib.quantity) 
                          FROM "OrderItemBatch" oib 
-                         WHERE oib."productBatchId"::text = pb.id::text AND oib."createdAt" <= $1
+                         WHERE oib."productBatchId"::text = pb.id::text AND oib."createdAt"::date <= $1::date
                         ), 0) as outgoing
                 FROM "ProductBatch" pb
                 LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
