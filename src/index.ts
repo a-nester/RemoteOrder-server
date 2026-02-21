@@ -10,6 +10,7 @@ import counterpartyRoutes from './routes/counterparties.js';
 import organizationRoutes from './routes/organization.js';
 import realizationRoutes from './routes/realization.js';
 import goodsReceiptRoutes from './routes/goodsReceipt.js';
+import reportsRoutes from './routes/reports.js';
 import authRoutes from './routes/auth.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -43,6 +44,7 @@ app.use('/api', counterpartyRoutes);
 app.use('/api/organization', organizationRoutes);
 app.use('/api/realizations', realizationRoutes);
 app.use('/api/goods-receipt', goodsReceiptRoutes);
+app.use('/api/reports', reportsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
