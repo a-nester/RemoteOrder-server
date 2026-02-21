@@ -27,12 +27,13 @@ export class GoodsReceiptService {
 
             // 2. Create Items
             if (items && items.length > 0) {
+                let sortOrder = 0;
                 for (const item of items) {
                     await client.query(
                         `INSERT INTO "GoodsReceiptItem" 
-                        ("goodsReceiptId", "productId", "quantity", "price", "total")
-                        VALUES ($1, $2, $3, $4, $5)`,
-                        [receipt.id, item.productId, item.quantity, item.price, item.total]
+                        ("goodsReceiptId", "productId", "quantity", "price", "total", "sortOrder")
+                        VALUES ($1, $2, $3, $4, $5, $6)`,
+                        [receipt.id, item.productId, item.quantity, item.price, item.total, sortOrder++]
                     );
                 }
             }
@@ -70,12 +71,13 @@ export class GoodsReceiptService {
             await client.query(`DELETE FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = $1`, [id]);
 
             if (items && items.length > 0) {
+                let sortOrder = 0;
                 for (const item of items) {
                     await client.query(
                         `INSERT INTO "GoodsReceiptItem" 
-                        ("goodsReceiptId", "productId", "quantity", "price", "total")
-                        VALUES ($1, $2, $3, $4, $5)`,
-                        [id, item.productId, item.quantity, item.price, item.total]
+                        ("goodsReceiptId", "productId", "quantity", "price", "total", "sortOrder")
+                        VALUES ($1, $2, $3, $4, $5, $6)`,
+                        [id, item.productId, item.quantity, item.price, item.total, sortOrder++]
                     );
                 }
             }
@@ -103,7 +105,7 @@ export class GoodsReceiptService {
             await client.query('BEGIN');
 
             // 1. Get Items
-            const itemsRes = await client.query(`SELECT * FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = $1`, [id]);
+            const itemsRes = await client.query(`SELECT * FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = $1 ORDER BY "sortOrder" ASC, "createdAt" ASC`, [id]);
             const items = itemsRes.rows;
 
             // 2. Process Stock
@@ -151,6 +153,7 @@ export class GoodsReceiptService {
     FROM "GoodsReceiptItem" gri
     LEFT JOIN "Product" p ON p.id = gri."productId"::uuid
     WHERE gri."goodsReceiptId" = $1
+    ORDER BY gri."sortOrder" ASC, gri."createdAt" ASC
   `, [id]);
 
         return { ...docRes.rows[0], items: itemsRes.rows };
