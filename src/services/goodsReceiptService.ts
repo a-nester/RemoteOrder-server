@@ -19,7 +19,7 @@ export class GoodsReceiptService {
             const result = await client.query(
                 `INSERT INTO "GoodsReceipt" 
                 ("number", "date", "warehouseId", "providerId", "comment", "status", "createdBy")
-                VALUES ($1, $2, $3, $4, $5, $6, 'SAVED', $7)
+                VALUES ($1, $2, $3, $4, $5, 'SAVED', $6)
                 RETURNING *`,
                 [number, date, warehouseId, providerId, comment, userId]
             );
@@ -60,9 +60,9 @@ export class GoodsReceiptService {
 
             // 1. Update Header
             await client.query(
-                `UPDATE "GoodsReceipt" 
-                SET "number"=$1, "date"=$2, "warehouseId"=$3, "providerId"=$4, "comment"=$6, "updatedAt"=NOW()
-                WHERE id = $7`,
+                `UPDATE "GoodsReceipt"
+   SET "number"=$1, "date"=$2, "warehouseId"=$3, "providerId"=$4, "comment"=$5, "updatedAt"=NOW()
+   WHERE id = $6`,
                 [number, date, warehouseId, providerId, comment, id]
             );
 
@@ -137,26 +137,25 @@ export class GoodsReceiptService {
     // Get By ID
     static async getById(id: string) {
         const docRes = await pool.query(`
-            SELECT gr.*, c.name as "providerName", w.name as "warehouseName", pt.name as "priceTypeName"
-            FROM "GoodsReceipt" gr
-            LEFT JOIN "Counterparty" c ON c.id = gr."providerId"
-            LEFT JOIN "Warehouse" w ON w.id = gr."warehouseId"
-            LEFT JOIN "PriceType" pt ON pt.id = gr."priceTypeId"
-            WHERE gr.id = $1
-        `, [id]);
+    SELECT gr.*, c.name as "providerName", w.name as "warehouseName"
+    FROM "GoodsReceipt" gr
+    LEFT JOIN "Counterparty" c ON c.id = gr."providerId"
+    LEFT JOIN "Warehouse" w ON w.id = gr."warehouseId"
+    WHERE gr.id = $1
+  `, [id]);
 
         if (docRes.rows.length === 0) return null;
-        const doc = docRes.rows[0];
 
         const itemsRes = await pool.query(`
-            SELECT gri.*, p.name as "productName"
-            FROM "GoodsReceiptItem" gri
-            LEFT JOIN "Product" p ON p.id::text = gri."productId" -- Product ID matches by text currently?
-            WHERE gri."goodsReceiptId" = $1
-        `, [id]);
+    SELECT gri.*, p.name as "productName"
+    FROM "GoodsReceiptItem" gri
+    LEFT JOIN "Product" p ON p.id = gri."productId"
+    WHERE gri."goodsReceiptId" = $1
+  `, [id]);
 
-        return { ...doc, items: itemsRes.rows };
+        return { ...docRes.rows[0], items: itemsRes.rows };
     }
+
 
     // List
     static async getAll(filters: any) {
