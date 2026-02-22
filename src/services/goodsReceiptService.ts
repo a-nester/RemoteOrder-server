@@ -136,10 +136,10 @@ export class GoodsReceiptService {
         }
     }
 
-    // Get By ID
     static async getById(id: string) {
         const docRes = await pool.query(`
-    SELECT gr.*, c.name as "providerName", w.name as "warehouseName"
+    SELECT gr.*, c.name as "providerName", w.name as "warehouseName",
+           (SELECT COALESCE(SUM(total), 0) FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = gr.id) as amount
     FROM "GoodsReceipt" gr
     LEFT JOIN "Counterparty" c ON c.id = gr."providerId"
     LEFT JOIN "Warehouse" w ON w.id = gr."warehouseId"
@@ -163,7 +163,8 @@ export class GoodsReceiptService {
     // List
     static async getAll(filters: any) {
         let query = `
-            SELECT gr.*, c.name as "providerName", w.name as "warehouseName"
+            SELECT gr.*, c.name as "providerName", w.name as "warehouseName",
+                   (SELECT COALESCE(SUM(total), 0) FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = gr.id) as amount
             FROM "GoodsReceipt" gr
             LEFT JOIN "Counterparty" c ON c.id = gr."providerId"
             LEFT JOIN "Warehouse" w ON w.id = gr."warehouseId"

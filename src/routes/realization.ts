@@ -127,4 +127,124 @@ router.post('/from-order/:orderId', userAuth, async (req, res) => {
     }
 });
 
+// Edit Realization
+router.put('/:id', userAuth, async (req, res) => {
+    const { id } = req.params;
+    const { date, counterpartyId, warehouseId, amount, items, comment } = req.body;
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // Check if exists and not posted
+        const realRes = await client.query('SELECT status FROM "Realization" WHERE id = $1', [id]);
+        if (realRes.rowCount === 0) throw new Error('Realization not found');
+        if (realRes.rows[0].status === 'POSTED') throw new Error('Cannot edit a POSTED realization');
+
+        // Update Header
+        await client.query(`
+            UPDATE "Realization"
+            SET "date" = COALESCE($1, "date"),
+                "counterpartyId" = COALESCE($2, "counterpartyId"),
+                "warehouseId" = COALESCE($3, "warehouseId"),
+                "comment" = COALESCE($4, "comment"),
+                "amount" = COALESCE($5, "amount"),
+                "updatedAt" = NOW()
+            WHERE id = $6
+        `, [date, counterpartyId, warehouseId, comment, amount, id]);
+
+        // If items are provided, wipe and recreate (easier than delta patching)
+        if (items && Array.isArray(items)) {
+            await client.query('DELETE FROM "RealizationItem" WHERE "realizationId" = $1', [id]);
+            for (const item of items) {
+                await client.query(`
+                    INSERT INTO "RealizationItem" ("realizationId", "productId", "quantity", "price", "total")
+                    VALUES ($1, $2, $3, $4, $5)
+                `, [id, item.productId, item.quantity, item.sellPrice || item.price, item.total]);
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error updating realization:', error);
+        res.status(500).json({ message: error instanceof Error ? error.message : 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// POST (Провести) Realization
+import { InventoryService } from '../services/inventoryService.js';
+
+router.post('/:id/post', userAuth, async (req, res) => {
+    const { id } = req.params;
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // 1. Get current realization
+        const docRes = await client.query('SELECT * FROM "Realization" WHERE id = $1 FOR UPDATE', [id]);
+        if (docRes.rowCount === 0) throw new Error('Realization not found');
+        const doc = docRes.rows[0];
+
+        if (doc.status === 'POSTED') {
+            throw new Error('Realization is already POSTED');
+        }
+
+        // 2. Get items
+        const itemsRes = await client.query('SELECT * FROM "RealizationItem" WHERE "realizationId" = $1', [id]);
+        const items = itemsRes.rows;
+
+        let totalCostPrice = 0;
+        let totalSellPrice = Number(doc.amount);
+
+        // 3. Process each item (FIFO deduct)
+        for (const item of items) {
+            const productId = item.productId;
+            const quantityNeeded = Number(item.quantity);
+
+            // Deduct stock and get breakdown of batches used
+            const deductions = await InventoryService.deductStock(client, productId, quantityNeeded);
+
+            for (const deduction of deductions) {
+                // Record the batch deduction
+                await client.query(`
+                    INSERT INTO "RealizationItemBatch" ("realizationItemId", "productBatchId", "quantity", "enterPrice")
+                    VALUES ($1, $2, $3, $4)
+                `, [item.id, deduction.batchId, deduction.quantity, deduction.enterPrice]);
+
+                // Accumulate cost price
+                totalCostPrice += (deduction.quantity * deduction.enterPrice);
+            }
+        }
+
+        // 4. Calculate profit
+        const profit = totalSellPrice - totalCostPrice;
+
+        // 5. Build comment tag if any profit warning
+        let statusComment = doc.comment ? doc.comment + ' ' : '';
+        if (profit < 0) statusComment += '[WARNING: Negative Profit]';
+
+        // 6. Update Realization Status
+        await client.query(`
+            UPDATE "Realization"
+            SET "status" = 'POSTED', "profit" = $1, "comment" = $2, "updatedAt" = NOW()
+            WHERE id = $3
+        `, [profit, statusComment.trim() || null, id]);
+
+        await client.query('COMMIT');
+        res.json({ success: true, profit });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error posting realization:', error);
+        res.status(400).json({ message: error instanceof Error ? error.message : 'Failed to post' });
+    } finally {
+        client.release();
+    }
+});
+
 export default router;
