@@ -38,8 +38,8 @@ app.use(express.static(clientBuildPath));
 
 app.use('/api/auth', authRoutes);
 app.use('/api', syncRoutes);
-app.use('/api/admin', adminRoutes);
 app.use('/api/admin/users', usersRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/admin', priceTypeRoutes);
 app.use('/api/price-documents', priceDocumentRoutes);
 app.use('/api', counterpartyRoutes);
