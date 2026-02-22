@@ -76,6 +76,7 @@ app.get(/(.*)/, (req, res) => {
 
 import { runMigration as addCommentMigration } from './migrations/add_comment_to_order.js';
 import { runMigration as addDocNumberMigration } from './migrations/add_doc_number.js';
+import { runMigration as addUserCounterpartyMigration } from './migrations/add_user_counterparty.js';
 
 const start = async () => {
   try {
@@ -85,6 +86,7 @@ const start = async () => {
     // Run migrations
     await addCommentMigration();
     await addDocNumberMigration();
+    await addUserCounterpartyMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
