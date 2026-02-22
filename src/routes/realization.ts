@@ -8,14 +8,22 @@ const router = express.Router();
 // List Realizations
 router.get('/', userAuth, async (req, res) => {
     try {
-        const result = await pool.query(`
+        const { includeDeleted } = req.query;
+        let query = `
             SELECT r.*, c.name as "counterpartyName", w.name as "warehouseName"
             FROM "Realization" r
             LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
             LEFT JOIN "Warehouse" w ON r."warehouseId" = w.id
-            WHERE r."isDeleted" = FALSE
-            ORDER BY r.date DESC
-        `);
+            WHERE 1=1
+        `;
+
+        if (includeDeleted !== 'true') {
+            query += ` AND r."isDeleted" = FALSE`;
+        }
+
+        query += ` ORDER BY r.date DESC`;
+        
+        const result = await pool.query(query);
         res.json(result.rows);
     } catch (error) {
         console.error('Error fetching realizations:', error);
@@ -242,6 +250,40 @@ router.post('/:id/post', userAuth, async (req, res) => {
         await client.query('ROLLBACK');
         console.error('Error posting realization:', error);
         res.status(400).json({ message: error instanceof Error ? error.message : 'Failed to post' });
+    } finally {
+        client.release();
+    }
+});
+
+// Delete Realization
+router.delete('/:id', userAuth, async (req, res) => {
+    const { id } = req.params;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        const checkRes = await client.query('SELECT status FROM "Realization" WHERE id = $1', [id]);
+        if ((checkRes.rowCount || 0) === 0) {
+            throw new Error('Realization not found');
+        }
+        
+        const status = checkRes.rows[0].status;
+        if (status === 'POSTED') {
+            throw new Error('Cannot delete a posted realization');
+        }
+
+        await client.query(`
+            UPDATE "Realization"
+            SET "isDeleted" = TRUE, "updatedAt" = NOW()
+            WHERE id = $1
+        `, [id]);
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'Realization deleted successfully' });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error deleting realization:', error);
+        res.status(400).json({ message: error instanceof Error ? error.message : 'Failed to delete' });
     } finally {
         client.release();
     }
