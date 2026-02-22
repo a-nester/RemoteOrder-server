@@ -141,6 +141,9 @@ router.post('/sync/push', async (req: Request, res: Response) => {
 
             // 2. Process Items (Just Save, No Stock Deduction)
             if (data.items && Array.isArray(data.items)) {
+              // Delete old items first to prevent duplication on Upsert
+              await client.query('DELETE FROM "OrderItem" WHERE "orderId" = $1', [id]);
+              
               for (const item of data.items) {
                 // Create Normalized OrderItem
                 await client.query(
