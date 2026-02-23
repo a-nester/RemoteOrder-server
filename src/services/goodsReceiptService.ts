@@ -136,6 +136,34 @@ export class GoodsReceiptService {
         }
     }
 
+    // Cancel Post (Remove from Stock)
+    static async unpost(id: string) {
+        const client = await pool.connect();
+        try {
+            const docRes = await client.query(`SELECT * FROM "GoodsReceipt" WHERE id = $1`, [id]);
+            if (docRes.rows.length === 0) throw new Error('Document not found');
+            const doc = docRes.rows[0];
+
+            if (doc.status !== 'POSTED') throw new Error('Document is not posted');
+
+            await client.query('BEGIN');
+
+            // 1. Delete associated batches
+            await client.query(`DELETE FROM "ProductBatch" WHERE "goodsReceiptId" = $1`, [id]);
+
+            // 2. Update Status back to SAVED
+            await client.query(`UPDATE "GoodsReceipt" SET "status" = 'SAVED', "updatedAt" = NOW() WHERE id = $1`, [id]);
+
+            await client.query('COMMIT');
+            return this.getById(id);
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
     static async getById(id: string) {
         const docRes = await pool.query(`
     SELECT gr.*, c.name as "providerName", w.name as "warehouseName",

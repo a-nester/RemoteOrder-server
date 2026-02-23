@@ -68,4 +68,18 @@ export class GoodsReceiptController {
             res.status(500).json({ error: 'Failed to post document' });
         }
     }
+
+    // POST /api/goods-receipt/:id/unpost (Cancel Post)
+    static async unpost(req: any, res: any) {
+        try {
+            const doc = await GoodsReceiptService.unpost(req.params.id);
+            res.json(doc);
+        } catch (error: any) {
+            console.error('Unpost GoodsReceipt error:', error);
+            if (error.message === 'Document is not posted') {
+                return res.status(400).json({ error: error.message });
+            }
+            res.status(500).json({ error: 'Failed to unpost document' });
+        }
+    }
 }

@@ -11,5 +11,6 @@ router.get('/:id', GoodsReceiptController.getById);
 router.post('/', GoodsReceiptController.create);
 router.put('/:id', GoodsReceiptController.update);
 router.post('/:id/post', GoodsReceiptController.post);
+router.post('/:id/unpost', GoodsReceiptController.unpost);
 
 export default router;
