@@ -343,7 +343,7 @@ router.put('/orders/:id', async (req: Request, res: Response) => {
                 "isDeleted" = COALESCE($5, "isDeleted"),
                 "items" = COALESCE($6, "items"),
                 "comment" = COALESCE($7, "comment"),
-                "date" = COALESCE($8, "date"),
+                "createdAt" = COALESCE($8, "createdAt"),
                 "updatedAt" = NOW()
             WHERE id = $1
             RETURNING *

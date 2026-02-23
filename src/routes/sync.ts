@@ -114,17 +114,17 @@ router.post('/sync/push', async (req: Request, res: Response) => {
           try {
             await client.query('BEGIN');
 
-            const fields = ['id', 'userId', 'counterpartyId', 'status', 'total', 'items', 'isDeleted', 'date', 'updatedAt'];
+            const fields = ['id', 'userId', 'counterpartyId', 'status', 'total', 'items', 'isDeleted', 'createdAt', 'updatedAt'];
             const insertQuery = `
-               INSERT INTO "Order" (id, "userId", "counterpartyId", status, total, items, "isDeleted", "date", "updatedAt")
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+               INSERT INTO "Order" (id, "userId", "counterpartyId", status, total, items, "isDeleted", "createdAt", "updatedAt")
+               VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, NOW()), NOW())
                ON CONFLICT (id) DO UPDATE SET
                   "counterpartyId" = EXCLUDED."counterpartyId",
                   status = EXCLUDED.status,
                   total = EXCLUDED.total,
                   items = EXCLUDED.items,
                   "isDeleted" = EXCLUDED."isDeleted",
-                  "date" = EXCLUDED."date",
+                  "createdAt" = COALESCE(EXCLUDED."createdAt", "Order"."createdAt"),
                   "updatedAt" = NOW()
                RETURNING *
              `;
@@ -174,7 +174,7 @@ router.post('/sync/push', async (req: Request, res: Response) => {
                 total = COALESCE($4, total),
                 items = COALESCE($5, items),
                 "isDeleted" = COALESCE($6, "isDeleted"),
-                date = COALESCE($7, date),
+                "createdAt" = COALESCE($7, "createdAt"),
                 "updatedAt" = NOW()
             WHERE id = $1
             RETURNING *
