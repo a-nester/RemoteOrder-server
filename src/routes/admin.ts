@@ -330,7 +330,7 @@ router.put('/orders/:id', async (req: Request, res: Response) => {
     const client = await pool.connect();
     try {
         const { id } = req.params;
-        const { status, total, amount, counterpartyId, isDeleted, items, comment } = req.body;
+        const { status, total, amount, counterpartyId, isDeleted, items, comment, date } = req.body;
 
         await client.query('BEGIN');
 
@@ -343,6 +343,7 @@ router.put('/orders/:id', async (req: Request, res: Response) => {
                 "isDeleted" = COALESCE($5, "isDeleted"),
                 "items" = COALESCE($6, "items"),
                 "comment" = COALESCE($7, "comment"),
+                "date" = COALESCE($8, "date"),
                 "updatedAt" = NOW()
             WHERE id = $1
             RETURNING *
@@ -353,7 +354,8 @@ router.put('/orders/:id', async (req: Request, res: Response) => {
             counterpartyId,
             isDeleted,
             items ? JSON.stringify(items) : null,
-            comment
+            comment,
+            date
         ]);
 
         if (result.rows.length === 0) {

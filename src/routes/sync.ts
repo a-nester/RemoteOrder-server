@@ -114,16 +114,17 @@ router.post('/sync/push', async (req: Request, res: Response) => {
           try {
             await client.query('BEGIN');
 
-            const fields = ['id', 'userId', 'counterpartyId', 'status', 'total', 'items', 'isDeleted', 'updatedAt'];
+            const fields = ['id', 'userId', 'counterpartyId', 'status', 'total', 'items', 'isDeleted', 'date', 'updatedAt'];
             const insertQuery = `
-               INSERT INTO "Order" (id, "userId", "counterpartyId", status, total, items, "isDeleted", "updatedAt")
-               VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+               INSERT INTO "Order" (id, "userId", "counterpartyId", status, total, items, "isDeleted", "date", "updatedAt")
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
                ON CONFLICT (id) DO UPDATE SET
                   "counterpartyId" = EXCLUDED."counterpartyId",
                   status = EXCLUDED.status,
                   total = EXCLUDED.total,
                   items = EXCLUDED.items,
                   "isDeleted" = EXCLUDED."isDeleted",
+                  "date" = EXCLUDED."date",
                   "updatedAt" = NOW()
                RETURNING *
              `;
@@ -136,7 +137,8 @@ router.post('/sync/push', async (req: Request, res: Response) => {
               data.status || 'pending',
               data.total || 0,
               JSON.stringify(data.items || []), // Keep JSON for compatibility/cache
-              data.isDeleted ? true : false
+              data.isDeleted ? true : false,
+              data.date || new Date().toISOString()
             ]);
 
             // 2. Process Items (Just Save, No Stock Deduction)
@@ -172,6 +174,7 @@ router.post('/sync/push', async (req: Request, res: Response) => {
                 total = COALESCE($4, total),
                 items = COALESCE($5, items),
                 "isDeleted" = COALESCE($6, "isDeleted"),
+                date = COALESCE($7, date),
                 "updatedAt" = NOW()
             WHERE id = $1
             RETURNING *
@@ -182,7 +185,8 @@ router.post('/sync/push', async (req: Request, res: Response) => {
             data.status,
             data.total,
             data.items ? JSON.stringify(data.items) : null,
-            data.isDeleted
+            data.isDeleted,
+            data.date
           ]);
 
         } else if (operation === 'DELETE') {
