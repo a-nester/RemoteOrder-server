@@ -23,13 +23,15 @@ router.get('/counterparty-groups', async (req: Request, res: Response) => {
 // POST /counterparty-groups
 router.post('/counterparty-groups', async (req: Request, res: Response) => {
     try {
-        const { name } = req.body;
+        const { name, parentId } = req.body;
         if (!name) return res.status(400).json({ error: 'Name is required' });
 
-        const result = await pool.query(
-            'INSERT INTO "CounterpartyGroup" ("name") VALUES ($1) RETURNING *',
-            [name]
-        );
+        const query = parentId 
+            ? 'INSERT INTO "CounterpartyGroup" ("name", "parentId") VALUES ($1, $2) RETURNING *'
+            : 'INSERT INTO "CounterpartyGroup" ("name") VALUES ($1) RETURNING *';
+        const params = parentId ? [name, parentId] : [name];
+
+        const result = await pool.query(query, params);
         res.status(201).json(result.rows[0]);
     } catch (error) {
         console.error('Create group error:', error);

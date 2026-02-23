@@ -78,6 +78,7 @@ import { runMigration as addCommentMigration } from './migrations/add_comment_to
 import { runMigration as addDocNumberMigration } from './migrations/add_doc_number.js';
 import { runMigration as addUserCounterpartyMigration } from './migrations/add_user_counterparty.js';
 import { runMigration as alterQuantityDecimalsMigration } from './migrations/alter_quantity_decimals.js';
+import { runMigration as addCounterpartySubgroupsMigration } from './migrations/add_counterparty_subgroups.js';
 
 const start = async () => {
   try {
@@ -89,6 +90,7 @@ const start = async () => {
     await addDocNumberMigration();
     await addUserCounterpartyMigration();
     await alterQuantityDecimalsMigration();
+    await addCounterpartySubgroupsMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
