@@ -258,32 +258,29 @@ router.post('/:id/post', userAuth, async (req, res) => {
 // UNPOST (розпровести) Realization
 
 router.post('/:id/unpost', userAuth, async (req, res) => {
-    const id = req.params.id;
-
-    if (!id || Array.isArray(id)) {
-        return res.status(400).json({ message: 'Invalid realization id' });
-    }
-    
+    const { id } = req.params;
     const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
 
+        // 1️⃣ Заблокувати реалізацію
         const docRes = await client.query(
             'SELECT * FROM "Realization" WHERE id = $1 FOR UPDATE',
             [id]
         );
 
-        if (docRes.rowCount === 0)
-            throw new Error('Realization not found');
+        if (docRes.rowCount === 0) throw new Error('Realization not found');
 
-        if (docRes.rows[0].status !== 'POSTED')
-            throw new Error('Only POSTED realization can be unposted');
+        const realization = docRes.rows[0];
 
-        // 🔥 повернення складу через сервіс
+        if (realization.status !== 'POSTED')
+            throw new Error('Only POSTED realizations can be unposted');
+
+        // 2️⃣ Повернення складу через InventoryService
         await InventoryService.returnStock(client, id);
 
-        // видалення batch записів
+        // 3️⃣ Видалення batch записів
         await client.query(`
             DELETE FROM "RealizationItemBatch"
             WHERE "realizationItemId" IN (
@@ -292,20 +289,25 @@ router.post('/:id/unpost', userAuth, async (req, res) => {
             )
         `, [id]);
 
+        // 4️⃣ Оновлення статусу і profit
+        // Якщо profit колонка NOT NULL, ставимо 0
+        const resetProfit = realization.profit !== undefined ? 0 : null;
+
         await client.query(`
             UPDATE "Realization"
             SET status = 'DRAFT',
-                profit = NULL,
+                profit = $1,
                 "updatedAt" = NOW()
-            WHERE id = $1
-        `, [id]);
+            WHERE id = $2
+        `, [resetProfit, id]);
 
         await client.query('COMMIT');
         res.json({ success: true });
 
-    } catch (e) {
+    } catch (error: any) {
         await client.query('ROLLBACK');
-        res.status(400).json({ message: e instanceof Error ? e.message : 'Failed' });
+        console.error('UNPOST ERROR:', error);
+        res.status(400).json({ message: error.message || 'Failed to unpost realization' });
     } finally {
         client.release();
     }
