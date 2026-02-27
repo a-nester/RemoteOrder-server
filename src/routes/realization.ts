@@ -258,7 +258,10 @@ router.post('/:id/post', userAuth, async (req, res) => {
 // UNPOST (розпровести) Realization
 
 router.post('/:id/unpost', userAuth, async (req, res) => {
-    const { id } = req.params;
+    const id = req.params.id;
+
+    if (!id || Array.isArray(id)) {
+        return res.status(400).json({ message: 'Invalid realization id' });}
     const client = await pool.connect();
 
     try {
