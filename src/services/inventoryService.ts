@@ -63,4 +63,37 @@ export class InventoryService {
 
         return deductions;
     }
+
+     /**
+     * Повернення товару на склад по конкретних batch-записах
+     */
+    static async returnStock(
+        client: any,
+        realizationId: string
+    ) {
+
+        // 1. Отримати всі batch записи
+        const batchesRes = await client.query(`
+            SELECT rib.*, ri."productId"
+            FROM "RealizationItemBatch" rib
+            JOIN "RealizationItem" ri 
+                ON rib."realizationItemId" = ri.id
+            WHERE ri."realizationId" = $1
+        `, [realizationId]);
+
+        const batches = batchesRes.rows;
+
+        // 2. Повернути кількість у відповідні партії
+        for (const batch of batches) {
+
+            await client.query(`
+                UPDATE "ProductBatch"
+                SET "remainingQuantity" = "remainingQuantity" + $1
+                WHERE id = $2
+            `, [batch.quantity, batch.productBatchId]);
+
+        }
+
+        return batches;
+    }
 }

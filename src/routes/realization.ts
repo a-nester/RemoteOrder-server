@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../db.js';
 import { userAuth, AuthRequest } from '../middleware/auth.js';
 import { generateDocNumber } from '../utils/docNumberGenerator.js';
+import { InventoryService } from '../services/inventoryService.js';
 
 const router = express.Router();
 
@@ -184,7 +185,6 @@ router.put('/:id', userAuth, async (req, res) => {
 });
 
 // POST (Провести) Realization
-import { InventoryService } from '../services/inventoryService.js';
 
 router.post('/:id/post', userAuth, async (req, res) => {
     const { id } = req.params;
@@ -250,6 +250,57 @@ router.post('/:id/post', userAuth, async (req, res) => {
         await client.query('ROLLBACK');
         console.error('Error posting realization:', error);
         res.status(400).json({ message: error instanceof Error ? error.message : 'Failed to post' });
+    } finally {
+        client.release();
+    }
+});
+
+// UNPOST (розпровести) Realization
+
+router.post('/:id/unpost', userAuth, async (req, res) => {
+    const { id } = req.params;
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        const docRes = await client.query(
+            'SELECT * FROM "Realization" WHERE id = $1 FOR UPDATE',
+            [id]
+        );
+
+        if (docRes.rowCount === 0)
+            throw new Error('Realization not found');
+
+        if (docRes.rows[0].status !== 'POSTED')
+            throw new Error('Only POSTED realization can be unposted');
+
+        // 🔥 повернення складу через сервіс
+        await InventoryService.returnStock(client, id);
+
+        // видалення batch записів
+        await client.query(`
+            DELETE FROM "RealizationItemBatch"
+            WHERE "realizationItemId" IN (
+                SELECT id FROM "RealizationItem"
+                WHERE "realizationId" = $1
+            )
+        `, [id]);
+
+        await client.query(`
+            UPDATE "Realization"
+            SET status = 'DRAFT',
+                profit = NULL,
+                "updatedAt" = NOW()
+            WHERE id = $1
+        `, [id]);
+
+        await client.query('COMMIT');
+        res.json({ success: true });
+
+    } catch (e) {
+        await client.query('ROLLBACK');
+        res.status(400).json({ message: e instanceof Error ? e.message : 'Failed' });
     } finally {
         client.release();
     }
