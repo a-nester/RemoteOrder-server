@@ -102,11 +102,14 @@ router.post('/from-order/:orderId', userAuth, async (req, res) => {
 
         const realizationRes = await client.query(`
             INSERT INTO "Realization" (
-                "date", "number", "counterpartyId", "warehouseId", "status", "amount", "currency", "createdBy"
+                "date", "number", "counterpartyId", "warehouseId", "status", "amount", "currency", "createdBy", "orderId"
             ) VALUES (
-               NOW(), $1, $2, $3, 'DRAFT', $4, $5, $6
+               NOW(), $1, $2, $3, 'DRAFT', $4, $5, $6, $7
             ) RETURNING id
-        `, [number, order.counterpartyId, warehouseId, order.total, order.currency, userId]);
+        `, [number, order.counterpartyId, warehouseId, order.total, order.currency, userId, orderId]);
+
+        // Update Order Status to ACCEPTED
+        await client.query(`UPDATE "Order" SET "status" = 'ACCEPTED', "updatedAt" = NOW() WHERE "id" = $1`, [orderId]);
 
         const realizationId = realizationRes.rows[0].id;
 
@@ -243,6 +246,11 @@ router.post('/:id/post', userAuth, async (req, res) => {
             WHERE id = $3
         `, [profit, statusComment.trim() || null, id]);
 
+        // 7. Update linked Order if exists
+        if (doc.orderId) {
+            await client.query(`UPDATE "Order" SET "status" = 'COMPLETED', "updatedAt" = NOW() WHERE "id" = $1`, [doc.orderId]);
+        }
+
         await client.query('COMMIT');
         res.json({ success: true, profit });
 
@@ -303,6 +311,11 @@ router.post('/:id/unpost', userAuth, async (req, res) => {
                 "updatedAt" = NOW()
             WHERE id = $2
         `, [resetProfit, id]);
+
+        // 5. Revert linked Order if exists
+        if (realization.orderId) {
+            await client.query(`UPDATE "Order" SET "status" = 'ACCEPTED', "updatedAt" = NOW() WHERE "id" = $1`, [realization.orderId]);
+        }
 
         await client.query('COMMIT');
         res.json({ success: true });
