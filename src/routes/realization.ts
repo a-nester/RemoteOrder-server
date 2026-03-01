@@ -63,6 +63,56 @@ router.get('/:id', userAuth, async (req, res) => {
     }
 });
 
+// Create Manual Realization
+router.post('/', userAuth, async (req, res) => {
+    const { date, counterpartyId, warehouseId, amount, comment, items } = req.body;
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // Number Generation
+        const number = await generateDocNumber('Realization', new Date(), 'number');
+        const userId = (req as AuthRequest).user?.id;
+
+        // Insert Header
+        const realizationRes = await client.query(`
+            INSERT INTO "Realization" (
+                "date", "number", "counterpartyId", "warehouseId", "status", "amount", "currency", "createdBy", "comment"
+            ) VALUES (
+               COALESCE($1, NOW()), $2, $3, $4, 'DRAFT', $5, 'UAH', $6, $7
+            ) RETURNING id
+        `, [date, number, counterpartyId, warehouseId, amount, userId, comment]);
+
+        const realizationId = realizationRes.rows[0].id;
+
+        // Insert Items
+        if (items && Array.isArray(items)) {
+            for (const item of items) {
+                await client.query(`
+                    INSERT INTO "RealizationItem" ("realizationId", "productId", "quantity", "price", "total")
+                    VALUES ($1, $2, $3, $4, $5)
+                `, [
+                    realizationId,
+                    item.productId,
+                    item.quantity,
+                    item.sellPrice || item.price,
+                    item.total
+                ]);
+            }
+        }
+
+        await client.query('COMMIT');
+        res.status(201).json({ id: realizationId, message: 'Realization created successfully' });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error creating manual realization:', error);
+        res.status(500).json({ message: error instanceof Error ? error.message : 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
 // Create Realization from Order
 router.post('/from-order/:orderId', userAuth, async (req, res) => {
     const { orderId } = req.params;
