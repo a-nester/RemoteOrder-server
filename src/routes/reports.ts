@@ -107,6 +107,9 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
         `;
 
         const result = await pool.query(query, params);
+        console.log('DEBUG sales/by-client SQL:', query);
+        console.log('DEBUG sales/by-client params:', params);
+        console.log('DEBUG sales/by-client result.rows:', result.rows);
         res.json(result.rows);
     } catch (error) {
         console.error('Error fetching sales by client:', error);
