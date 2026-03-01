@@ -33,9 +33,9 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
                     pb."enterPrice",
                     CASE WHEN pb."createdAt"::date <= $1::date THEN pb."quantityTotal" ELSE 0 END as incoming,
                     COALESCE(
-                        (SELECT SUM(oib.quantity) 
-                         FROM "OrderItemBatch" oib 
-                         WHERE oib."productBatchId"::text = pb.id::text AND oib."createdAt"::date <= $1::date
+                        (SELECT SUM(rib.quantity) 
+                         FROM "RealizationItemBatch" rib 
+                         WHERE rib."productBatchId"::text = pb.id::text AND rib."createdAt"::date <= $1::date
                         ), 0) as outgoing
                 FROM "ProductBatch" pb
                 LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text

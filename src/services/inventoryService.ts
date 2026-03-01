@@ -18,17 +18,20 @@ export class InventoryService {
     }
 
     /**
-     * Deduct stock using FIFO logic
+     * Deduct stock using FIFO logic, restricted by warehouse
      * Returns list of batch deductions to record in OrderItemBatch
      */
-    static async deductStock(client: any, productId: string, quantityNeeded: number) {
-        // 1. Get available batches ordered by createdAt ASC
+    static async deductStock(client: any, productId: string, quantityNeeded: number, warehouseId: string) {
+        // 1. Get available batches ordered by createdAt ASC, filtered by warehouse
         const batchesResult = await client.query(
-            `SELECT * FROM "ProductBatch" 
-       WHERE "productId" = $1 AND "quantityLeft" > 0 
-       ORDER BY "createdAt" ASC 
-       FOR UPDATE`, // Lock rows to prevent race conditions
-            [productId]
+            `SELECT pb.* FROM "ProductBatch" pb
+             JOIN "GoodsReceipt" gr ON pb."goodsReceiptId" = gr.id
+             WHERE pb."productId" = $1 
+               AND pb."quantityLeft" > 0 
+               AND gr."warehouseId" = $2
+             ORDER BY pb."createdAt" ASC 
+             FOR UPDATE`, // Lock rows to prevent race conditions
+            [productId, warehouseId]
         );
 
         const batches = batchesResult.rows;

@@ -268,7 +268,7 @@ router.post('/:id/post', userAuth, async (req, res) => {
             const quantityNeeded = Number(item.quantity);
 
             // Deduct stock and get breakdown of batches used
-            const deductions = await InventoryService.deductStock(client, productId, quantityNeeded);
+            const deductions = await InventoryService.deductStock(client, productId, quantityNeeded, doc.warehouseId);
 
             for (const deduction of deductions) {
                 // Record the batch deduction
