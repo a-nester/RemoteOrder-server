@@ -55,8 +55,27 @@ router.post('/products', upload.array('photos', 5), async (req: Request, res: Re
        RETURNING *`,
             [name, unit, category, JSON.stringify(parsedPrices), photoUrls]
         );
+        const newProduct = result.rows[0];
 
-        res.status(201).json(result.rows[0]);
+        if (parsedPrices && typeof parsedPrices === 'object') {
+            const ptResult = await pool.query('SELECT id, slug FROM "PriceType"');
+            const ptMap: Record<string, string> = {};
+            ptResult.rows.forEach(r => ptMap[r.slug] = r.id);
+
+            for (const [slug, priceValue] of Object.entries(parsedPrices)) {
+                if (ptMap[slug]) {
+                    const price = Number(priceValue);
+                    if (!isNaN(price)) {
+                        await pool.query(`
+                            INSERT INTO "PriceJournal" ("productId", "priceTypeId", "newPrice", "effectiveDate", "reason", "createdAt")
+                            VALUES ($1, $2, $3, NOW(), 'Manual product creation', NOW())
+                        `, [newProduct.id, ptMap[slug], price]);
+                    }
+                }
+            }
+        }
+
+        res.status(201).json(newProduct);
     } catch (error) {
         console.error('Create product error:', error);
         res.status(500).json({ error: 'Failed to create product' });
@@ -147,7 +166,37 @@ router.put('/products/:id', upload.array('photos', 5), async (req: Request, res:
             );
         }
 
-        res.json(dbResult.rows[0]);
+        const updatedProduct = dbResult.rows[0];
+
+        // Sync manual edits to PriceJournal dynamically if it differs from the last effective slice
+        if (parsedPrices && typeof parsedPrices === 'object') {
+            const ptResult = await pool.query('SELECT id, slug FROM "PriceType"');
+            const ptMap: Record<string, string> = {};
+            ptResult.rows.forEach(r => ptMap[r.slug] = r.id);
+
+            for (const [slug, priceValue] of Object.entries(parsedPrices)) {
+                if (ptMap[slug]) {
+                    const price = Number(priceValue);
+                    if (!isNaN(price)) {
+                        await pool.query(`
+                            INSERT INTO "PriceJournal" ("productId", "priceTypeId", "newPrice", "effectiveDate", "reason", "createdAt")
+                            SELECT $1, $2, $3, NOW(), 'Manual product edit', NOW()
+                            WHERE NOT EXISTS (
+                                SELECT 1 FROM "PriceJournal" 
+                                WHERE "productId" = $1 AND "priceTypeId" = $2 
+                                ORDER BY "effectiveDate" DESC LIMIT 1
+                            ) OR (
+                                SELECT "newPrice" FROM "PriceJournal" 
+                                WHERE "productId" = $1 AND "priceTypeId" = $2 
+                                ORDER BY "effectiveDate" DESC LIMIT 1
+                            ) != $3
+                        `, [updatedProduct.id, ptMap[slug], price]);
+                    }
+                }
+            }
+        }
+
+        res.json(updatedProduct);
     } catch (error) {
         console.error('Update product error:', error);
         res.status(500).json({ error: 'Failed to update product' });
