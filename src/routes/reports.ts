@@ -229,11 +229,12 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
             pId += 1;
         }
 
-        // --- Calculate Opening Balance ---
-        let startBalance = 0;
+        // --- Calculate Opening Balance per counterparty ---
+        const startBalances: Record<string, number> = {};
         if (dateFrom) {
             const startQuery = `
                 SELECT 
+                    r."counterpartyId",
                     COALESCE(SUM(CASE WHEN r.type = 'REALIZATION' THEN r.amount ELSE 0 END), 0) +
                     COALESCE(SUM(CASE WHEN r.type = 'OUTCOME' THEN r.amount ELSE 0 END), 0) -
                     COALESCE(SUM(CASE WHEN r.type = 'GOODS_RECEIPT' THEN r.amount ELSE 0 END), 0) -
@@ -245,11 +246,14 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
                     UNION ALL
                     SELECT amount, type, date, "counterpartyId" FROM "CashTransaction" WHERE "isDeleted" = FALSE
                 ) r
-                WHERE 1=1 ${clientIdsFilter.replace('r.', '')} AND r.date::date < $${startParams.length + 1}::date
+                WHERE 1=1 ${clientIdsFilter} AND r.date::date < $${startParams.length + 1}::date
+                GROUP BY r."counterpartyId"
             `;
             startParams.push(dateFrom);
             const startRes = await pool.query(startQuery, startParams);
-            startBalance = parseFloat(startRes.rows[0].startBal) || 0;
+            startRes.rows.forEach(r => {
+                startBalances[r.counterpartyId] = parseFloat(r.startBal) || 0;
+            });
         }
 
         // --- Main Ledger Query ---
@@ -263,7 +267,8 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
                     r.amount as "balanceChange",
                     r.amount as "debit",
                     0 as "credit",
-                    NULL as "comment"
+                    NULL as "comment",
+                    r."counterpartyId"
                 FROM "Realization" r
                 WHERE r.status = 'POSTED' ${clientIdsFilter} ${dateFilter}
 
@@ -277,7 +282,8 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
                     -( (SELECT COALESCE(SUM(total), 0) FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = r.id) ) as "balanceChange",
                     0 as "debit",
                     (SELECT COALESCE(SUM(total), 0) FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = r.id) as "credit",
-                    r.comment
+                    r.comment,
+                    r."providerId" as "counterpartyId"
                 FROM "GoodsReceipt" r
                 WHERE r.status = 'POSTED' ${clientIdsFilter.replace('"counterpartyId"', '"providerId"')} ${dateFilter}
 
@@ -291,7 +297,8 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
                     CASE WHEN r.type = 'INCOME' THEN -r.amount ELSE r.amount END as "balanceChange",
                     CASE WHEN r.type = 'OUTCOME' THEN r.amount ELSE 0 END as "debit",
                     CASE WHEN r.type = 'INCOME' THEN r.amount ELSE 0 END as "credit",
-                    r.comment
+                    r.comment,
+                    r."counterpartyId"
                 FROM "CashTransaction" r
                 WHERE r."isDeleted" = FALSE ${clientIdsFilter} ${dateFilter}
             )
@@ -300,16 +307,42 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
 
         const result = await pool.query(query, params);
         
-        let runningBalance = startBalance;
-        const ledger = result.rows.map(row => {
-            runningBalance += parseFloat(row.balanceChange);
-            return {
-                ...row,
-                runningBalance
+        // Group rows and compute running balances per counterparty
+        const counterpartyIds = new Set<string>();
+        Object.keys(startBalances).forEach(id => counterpartyIds.add(id));
+        result.rows.forEach(r => counterpartyIds.add(r.counterpartyId));
+
+        const groupedLedger: Record<string, any> = {};
+        
+        counterpartyIds.forEach(id => {
+            const startBal = startBalances[id] || 0;
+            groupedLedger[id] = {
+                counterpartyId: id,
+                startBalance: startBal,
+                endBalance: startBal,
+                ledger: []
             };
         });
 
-        res.json({ ledger, endBalance: runningBalance, startBalance });
+        result.rows.forEach(row => {
+            const cpInfo = groupedLedger[row.counterpartyId];
+            if (!cpInfo) return;
+
+            const rowChange = parseFloat(row.balanceChange) || 0;
+            cpInfo.endBalance += rowChange;
+
+            cpInfo.ledger.push({
+                ...row,
+                balanceChange: rowChange,
+                debit: parseFloat(row.debit) || 0,
+                credit: parseFloat(row.credit) || 0,
+                runningBalance: cpInfo.endBalance
+            });
+        });
+
+        res.json({ 
+            grouped: Object.values(groupedLedger)
+        });
     } catch (error) {
         console.error('Error generating reconciliation report:', error);
         res.status(500).json({ error: 'Failed to generate reconciliation report' });
