@@ -241,7 +241,7 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
                 FROM (
                     SELECT amount, 'REALIZATION' as type, date, "counterpartyId" FROM "Realization" WHERE status = 'POSTED'
                     UNION ALL
-                    SELECT total as amount, 'GOODS_RECEIPT' as type, date, "counterpartyId" FROM "GoodsReceipt" WHERE status = 'POSTED'
+                    SELECT (SELECT COALESCE(SUM(total), 0) FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = "GoodsReceipt".id) as amount, 'GOODS_RECEIPT' as type, date, "providerId" as "counterpartyId" FROM "GoodsReceipt" WHERE status = 'POSTED'
                     UNION ALL
                     SELECT amount, type, date, "counterpartyId" FROM "CashTransaction" WHERE "isDeleted" = FALSE
                 ) r
@@ -274,12 +274,12 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
                     r.date,
                     'GOODS_RECEIPT' as "type",
                     r."docNumber",
-                    -(r.total) as "balanceChange",
+                    -( (SELECT COALESCE(SUM(total), 0) FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = r.id) ) as "balanceChange",
                     0 as "debit",
-                    r.total as "credit",
+                    (SELECT COALESCE(SUM(total), 0) FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = r.id) as "credit",
                     r.comment
                 FROM "GoodsReceipt" r
-                WHERE r.status = 'POSTED' ${clientIdsFilter} ${dateFilter}
+                WHERE r.status = 'POSTED' ${clientIdsFilter.replace('"counterpartyId"', '"providerId"')} ${dateFilter}
 
                 UNION ALL
 
