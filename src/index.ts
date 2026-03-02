@@ -13,6 +13,7 @@ import goodsReceiptRoutes from './routes/goodsReceipt.js';
 import reportsRoutes from './routes/reports.js';
 import authRoutes from './routes/auth.js';
 import usersRoutes from './routes/users.js';
+import financeRoutes from './routes/finance.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -47,6 +48,7 @@ app.use('/api/organization', organizationRoutes);
 app.use('/api/realizations', realizationRoutes);
 app.use('/api/goods-receipt', goodsReceiptRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/finance', financeRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
