@@ -176,81 +176,131 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
 // GET /api/reports/reconciliation (Акт звірки)
 router.get('/reconciliation', async (req: Request, res: Response) => {
     try {
-        const { counterpartyId, dateFrom, dateTo } = req.query;
-        if (!counterpartyId) {
-            return res.status(400).json({ error: 'counterpartyId is required' });
+        const { counterpartyId, groupId, dateFrom, dateTo } = req.query;
+        if (!counterpartyId && !groupId) {
+            return res.status(400).json({ error: 'counterpartyId or groupId is required' });
         }
 
-        let params: any[] = [counterpartyId];
+        let params: any[] = [];
         let dateFilter = '';
+        let startParams: any[] = [];
+        let pId = 1;
+
+        // Recursive CTE to resolve counterparty IDs
+        let clientIdsFilter = '';
+        if (groupId) {
+            clientIdsFilter = `
+                WITH RECURSIVE GroupHierarchy AS (
+                    SELECT id FROM "CounterpartyGroup" WHERE id = $1
+                    UNION ALL
+                    SELECT cg.id FROM "CounterpartyGroup" cg
+                    INNER JOIN GroupHierarchy gh ON cg."parentId" = gh.id
+                )
+                SELECT id FROM "Counterparty" WHERE "groupId" IN (SELECT id FROM GroupHierarchy)
+            `;
+            const groupRes = await pool.query(clientIdsFilter, [groupId]);
+            const ids = groupRes.rows.map(r => r.id);
+            if (ids.length === 0) {
+                 return res.json({ ledger: [], endBalance: 0, startBalance: 0 }); // Empty group
+            }
+            clientIdsFilter = `AND r."counterpartyId" = ANY($${pId}::uuid[])`;
+            params.push(ids);
+            startParams.push(ids);
+            pId++;
+        } else {
+            clientIdsFilter = `AND r."counterpartyId" = $${pId}`;
+            params.push(counterpartyId);
+            startParams.push(counterpartyId);
+            pId++;
+        }
         
+        // Date filters for the ledger window
         if (dateFrom && dateTo) {
-            dateFilter = ` AND date::date >= $2::date AND date::date <= $3::date`;
+            dateFilter = ` AND r.date::date >= $${pId}::date AND r.date::date <= $${pId+1}::date`;
             params.push(dateFrom, dateTo);
+            pId += 2;
         } else if (dateFrom) {
-            dateFilter = ` AND date::date >= $2::date`;
+            dateFilter = ` AND r.date::date >= $${pId}::date`;
             params.push(dateFrom);
+            pId += 1;
         } else if (dateTo) {
-            dateFilter = ` AND date::date <= $2::date`;
+            dateFilter = ` AND r.date::date <= $${pId}::date`;
             params.push(dateTo);
+            pId += 1;
         }
 
-        // Ledger: 
-        // Realization (We sold) -> Client debt INCREASES (+)
-        // GoodsReceipt (We bought) -> Supplier debt INCREASES (-) [From our perspective, we owe them, so our debt to them is positive, their debt to us is negative. Let's normalize to "Counterparty Balance", where >0 means they owe us, <0 means we owe them]
-        // - Realization: +amount
-        // - CashTransaction (INCOME): -amount (they paid us, debt drops)
-        // - GoodsReceipt: -total (we bought, they owe us less / we owe them more)
-        // - CashTransaction (OUTCOME): +amount (we paid them, our debt drops / their balance goes up)
+        // --- Calculate Opening Balance ---
+        let startBalance = 0;
+        if (dateFrom) {
+            const startQuery = `
+                SELECT 
+                    COALESCE(SUM(CASE WHEN r.type = 'REALIZATION' THEN r.amount ELSE 0 END), 0) +
+                    COALESCE(SUM(CASE WHEN r.type = 'OUTCOME' THEN r.amount ELSE 0 END), 0) -
+                    COALESCE(SUM(CASE WHEN r.type = 'GOODS_RECEIPT' THEN r.amount ELSE 0 END), 0) -
+                    COALESCE(SUM(CASE WHEN r.type = 'INCOME' THEN r.amount ELSE 0 END), 0) as "startBal"
+                FROM (
+                    SELECT amount, 'REALIZATION' as type, date, "counterpartyId" FROM "Realization" WHERE status = 'POSTED'
+                    UNION ALL
+                    SELECT total as amount, 'GOODS_RECEIPT' as type, date, "counterpartyId" FROM "GoodsReceipt" WHERE status = 'POSTED'
+                    UNION ALL
+                    SELECT amount, type, date, "counterpartyId" FROM "CashTransaction" WHERE "isDeleted" = FALSE
+                ) r
+                WHERE 1=1 ${clientIdsFilter.replace('r.', '')} AND r.date::date < $${startParams.length + 1}::date
+            `;
+            startParams.push(dateFrom);
+            const startRes = await pool.query(startQuery, startParams);
+            startBalance = parseFloat(startRes.rows[0].startBal) || 0;
+        }
 
+        // --- Main Ledger Query ---
         const query = `
             WITH Ledger AS (
                 SELECT 
-                    id as "documentId",
-                    date,
+                    r.id as "documentId",
+                    r.date,
                     'REALIZATION' as "type",
-                    number as "docNumber",
-                    amount as "balanceChange",
-                    amount as "debit",
+                    r.number as "docNumber",
+                    r.amount as "balanceChange",
+                    r.amount as "debit",
                     0 as "credit",
                     NULL as "comment"
-                FROM "Realization"
-                WHERE "counterpartyId" = $1 AND status = 'POSTED' ${dateFilter}
+                FROM "Realization" r
+                WHERE r.status = 'POSTED' ${clientIdsFilter} ${dateFilter}
 
                 UNION ALL
 
                 SELECT 
-                    id as "documentId",
-                    date,
+                    r.id as "documentId",
+                    r.date,
                     'GOODS_RECEIPT' as "type",
-                    "docNumber",
-                    -(total) as "balanceChange",
+                    r."docNumber",
+                    -(r.total) as "balanceChange",
                     0 as "debit",
-                    total as "credit",
-                    comment
-                FROM "GoodsReceipt"
-                WHERE "counterpartyId" = $1 AND status = 'POSTED' ${dateFilter}
+                    r.total as "credit",
+                    r.comment
+                FROM "GoodsReceipt" r
+                WHERE r.status = 'POSTED' ${clientIdsFilter} ${dateFilter}
 
                 UNION ALL
 
                 SELECT 
-                    id as "documentId",
-                    date,
-                    type as "type", -- 'INCOME' or 'OUTCOME'
-                    number as "docNumber",
-                    CASE WHEN type = 'INCOME' THEN -amount ELSE amount END as "balanceChange",
-                    CASE WHEN type = 'OUTCOME' THEN amount ELSE 0 END as "debit",
-                    CASE WHEN type = 'INCOME' THEN amount ELSE 0 END as "credit",
-                    comment
-                FROM "CashTransaction"
-                WHERE "counterpartyId" = $1 AND "isDeleted" = FALSE ${dateFilter}
+                    r.id as "documentId",
+                    r.date,
+                    r.type as "type", -- 'INCOME' or 'OUTCOME'
+                    r.number as "docNumber",
+                    CASE WHEN r.type = 'INCOME' THEN -r.amount ELSE r.amount END as "balanceChange",
+                    CASE WHEN r.type = 'OUTCOME' THEN r.amount ELSE 0 END as "debit",
+                    CASE WHEN r.type = 'INCOME' THEN r.amount ELSE 0 END as "credit",
+                    r.comment
+                FROM "CashTransaction" r
+                WHERE r."isDeleted" = FALSE ${clientIdsFilter} ${dateFilter}
             )
             SELECT * FROM Ledger ORDER BY date ASC
         `;
 
         const result = await pool.query(query, params);
         
-        let runningBalance = 0;
+        let runningBalance = startBalance;
         const ledger = result.rows.map(row => {
             runningBalance += parseFloat(row.balanceChange);
             return {
@@ -259,7 +309,7 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
             };
         });
 
-        res.json({ ledger, endBalance: runningBalance });
+        res.json({ ledger, endBalance: runningBalance, startBalance });
     } catch (error) {
         console.error('Error generating reconciliation report:', error);
         res.status(500).json({ error: 'Failed to generate reconciliation report' });
@@ -271,11 +321,15 @@ router.get('/cashflow', async (req: Request, res: Response) => {
     try {
         const { cashboxId, dateFrom, dateTo } = req.query;
         let params: any[] = [];
+        let startParams: any[] = [];
         let filters = '';
+        let startFilters = '';
 
         if (cashboxId) {
             filters += ` AND t."cashboxId" = $${params.length + 1}`;
+            startFilters += ` AND "cashboxId" = $${startParams.length + 1}`;
             params.push(cashboxId);
+            startParams.push(cashboxId);
         }
 
         if (dateFrom && dateTo) {
@@ -289,6 +343,22 @@ router.get('/cashflow', async (req: Request, res: Response) => {
             params.push(dateTo);
         }
 
+        // --- Calculate Opening Balance ---
+        let startBalance = 0;
+        if (dateFrom) {
+            const startQuery = `
+                SELECT 
+                    COALESCE(SUM(CASE WHEN type = 'INCOME' THEN amount ELSE 0 END), 0) -
+                    COALESCE(SUM(CASE WHEN type = 'OUTCOME' THEN amount ELSE 0 END), 0) as "startBal"
+                FROM "CashTransaction"
+                WHERE "isDeleted" = FALSE ${startFilters} AND date::date < $${startParams.length + 1}::date
+            `;
+            startParams.push(dateFrom);
+            const startRes = await pool.query(startQuery, startParams);
+            startBalance = parseFloat(startRes.rows[0].startBal) || 0;
+        }
+
+        // --- Main Ledger Query ---
         const query = `
             SELECT 
                 t.*, 
@@ -305,18 +375,27 @@ router.get('/cashflow', async (req: Request, res: Response) => {
 
         const result = await pool.query(query, params);
         
-        let runningBalance = 0;
+        let runningBalance = startBalance;
         let totalIncome = 0;
         let totalOutcome = 0;
+        const incomesByCategory: Record<string, { name: string, amount: number }> = {};
+        const outcomesByCategory: Record<string, { name: string, amount: number }> = {};
 
         const ledger = result.rows.map((row: any) => {
             const amt = parseFloat(row.amount);
+            const catId = row.categoryId || 'uncategorized';
+            const catName = row.categoryName || 'Без статті';
+
             if(row.type === 'INCOME') {
                 runningBalance += amt;
                 totalIncome += amt;
+                if (!incomesByCategory[catId]) incomesByCategory[catId] = { name: catName, amount: 0 };
+                incomesByCategory[catId].amount += amt;
             } else {
                 runningBalance -= amt;
                 totalOutcome += amt;
+                if (!outcomesByCategory[catId]) outcomesByCategory[catId] = { name: catName, amount: 0 };
+                outcomesByCategory[catId].amount += amt;
             }
             return {
                 ...row,
@@ -324,7 +403,15 @@ router.get('/cashflow', async (req: Request, res: Response) => {
             };
         });
 
-        res.json({ ledger, endBalance: runningBalance, totalIncome, totalOutcome });
+        res.json({ 
+            ledger, 
+            endBalance: runningBalance, 
+            startBalance,
+            totalIncome, 
+            totalOutcome,
+            incomesByCategory: Object.values(incomesByCategory).sort((a,b) => b.amount - a.amount),
+            outcomesByCategory: Object.values(outcomesByCategory).sort((a,b) => b.amount - a.amount)
+        });
     } catch (error) {
         console.error('Error generating cashflow report:', error);
         res.status(500).json({ error: 'Failed to generate cashflow report' });
