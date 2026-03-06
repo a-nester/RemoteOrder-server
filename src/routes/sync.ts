@@ -37,7 +37,8 @@ import { transformProductForUser, Product, User } from '../utils/productTransfor
 // 📦 Endpoint для отримання списку продуктів (для перевірки та синхронізації)
 router.get('/products', async (req: Request, res: Response) => {
   try {
-    const { lastSync, userId } = req.query; // Assuming userId passed for now, or extract from token
+    const { lastSync } = req.query; 
+    let { userId } = req.query; // Assuming userId passed for now, or extract from token
     const lastSyncDate = lastSync ? new Date(String(lastSync)) : new Date(0);
     const adminSecret = req.headers['x-admin-secret'] as string;
     const authHeader = req.headers.authorization;
@@ -50,17 +51,21 @@ router.get('/products', async (req: Request, res: Response) => {
         try {
           const secret = process.env.JWT_SECRET || 'your-secret-key';
           const decoded = jwt.verify(token, secret) as any;
-          console.log('[GET /products] User Role:', decoded.role, 'Decoded:', decoded); // Debug log
-          if (decoded.role === 'admin' || decoded.role === 'manager') {
-            isAdmin = true;
+          // If they have a valid JWT, they are a logged in web panel user (Admin, Manager, or generic web user). 
+          // They should see all prices to allow selecting price profiles in forms.
+          isAdmin = true; 
+          
+          if (!userId && decoded.id) {
+             // Fallback to token's userId if not provided in query
+             userId = decoded.id; 
           }
         } catch (e) {
-          // Invalid token
+          // Invalid token, treat as public/mobile app sync fetching
         }
       }
     }
 
-    // Fetch user if userId is provided (Simulated Auth)
+    // Fetch user if userId is provided (Simulated Auth or decoded from token)
     // In real app, extracting User from JWT middleware is better.
     let user: User | undefined;
     if (userId) {
