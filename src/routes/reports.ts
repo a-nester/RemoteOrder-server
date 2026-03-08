@@ -86,7 +86,18 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
                 SELECT 
                     pb."productId",
                     SUM(CASE WHEN gr."date" < $1::date THEN pb."quantityTotal" ELSE 0 END) as start_in,
-                    SUM(CASE WHEN gr."date" >= $1::date AND gr."date" < ($2::date + interval '1 day') THEN pb."quantityTotal" ELSE 0 END) as period_in
+                    SUM(CASE WHEN gr."date" >= $1::date AND gr."date" < ($2::date + interval '1 day') THEN pb."quantityTotal" ELSE 0 END) as period_in,
+                    JSON_AGG(
+                        CASE WHEN gr."date" >= $1::date AND gr."date" < ($2::date + interval '1 day') THEN
+                            json_build_object(
+                                'id', gr.id,
+                                'type', 'GOODS_RECEIPT',
+                                'docNumber', gr."docNumber",
+                                'date', gr."date",
+                                'quantity', pb."quantityTotal"
+                            )
+                        ELSE NULL END
+                    ) FILTER (WHERE gr."date" >= $1::date AND gr."date" < ($2::date + interval '1 day')) as incoming_docs
                 FROM "ProductBatch" pb
                 JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
                 WHERE gr."warehouseId"::text = $3
@@ -96,7 +107,18 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
                 SELECT 
                     pb."productId",
                     SUM(CASE WHEN r."date" < $1::date THEN rib.quantity ELSE 0 END) as start_out,
-                    SUM(CASE WHEN r."date" >= $1::date AND r."date" < ($2::date + interval '1 day') THEN rib.quantity ELSE 0 END) as period_out
+                    SUM(CASE WHEN r."date" >= $1::date AND r."date" < ($2::date + interval '1 day') THEN rib.quantity ELSE 0 END) as period_out,
+                    JSON_AGG(
+                        CASE WHEN r."date" >= $1::date AND r."date" < ($2::date + interval '1 day') THEN
+                            json_build_object(
+                                'id', r.id,
+                                'type', 'REALIZATION',
+                                'docNumber', r.number,
+                                'date', r."date",
+                                'quantity', rib.quantity
+                            )
+                        ELSE NULL END
+                    ) FILTER (WHERE r."date" >= $1::date AND r."date" < ($2::date + interval '1 day')) as outgoing_docs
                 FROM "RealizationItemBatch" rib
                 JOIN "ProductBatch" pb ON pb.id::text = rib."productBatchId"::text
                 JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
@@ -113,7 +135,9 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
                 COALESCE(bi.start_in, 0) - COALESCE(bo.start_out, 0) as "startBalance",
                 COALESCE(bi.period_in, 0) as "incoming",
                 COALESCE(bo.period_out, 0) as "outgoing",
-                (COALESCE(bi.start_in, 0) - COALESCE(bo.start_out, 0)) + COALESCE(bi.period_in, 0) - COALESCE(bo.period_out, 0) as "endBalance"
+                (COALESCE(bi.start_in, 0) - COALESCE(bo.start_out, 0)) + COALESCE(bi.period_in, 0) - COALESCE(bo.period_out, 0) as "endBalance",
+                bi.incoming_docs,
+                bo.outgoing_docs
             FROM "Product" p
             LEFT JOIN BatchIncoming bi ON p.id::text = bi."productId"::text
             LEFT JOIN BatchOutgoing bo ON p.id::text = bo."productId"::text
@@ -130,7 +154,34 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
         const params = [dateFrom, dateTo, warehouseId];
 
         const result = await pool.query(fullQuery, params);
-        res.json(result.rows);
+        
+        // Mape the output to parse the JSON arrays and combine them into a single sorted 'details' array
+        const formattedResult = result.rows.map(row => {
+            const incoming = row.incoming_docs || [];
+            const outgoing = row.outgoing_docs || [];
+            
+            // Filter out nulls that JSON_AGG might produce
+            const validIncoming = incoming.filter((doc: any) => doc !== null);
+            const validOutgoing = outgoing.filter((doc: any) => doc !== null);
+
+            const details = [...validIncoming, ...validOutgoing].sort((a: any, b: any) => {
+                return new Date(a.date).getTime() - new Date(b.date).getTime();
+            });
+
+            return {
+                productId: row.productId,
+                productName: row.productName,
+                productCategory: row.productCategory,
+                warehouseName: row.warehouseName,
+                startBalance: row.startBalance,
+                incoming: row.incoming,
+                outgoing: row.outgoing,
+                endBalance: row.endBalance,
+                details
+            };
+        });
+
+        res.json(formattedResult);
     } catch (error) {
         console.error('Error fetching inventory movement:', error);
         res.status(500).json({ error: 'Failed to fetch inventory movement' });
