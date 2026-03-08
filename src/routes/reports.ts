@@ -31,11 +31,13 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
                     pb."productId",
                     gr."warehouseId",
                     pb."enterPrice",
-                    CASE WHEN pb."createdAt"::date <= $1::date THEN pb."quantityTotal" ELSE 0 END as incoming,
+                    CASE WHEN gr."date" < ($1::date + interval '1 day') THEN pb."quantityTotal" ELSE 0 END as incoming,
                     COALESCE(
                         (SELECT SUM(rib.quantity) 
                          FROM "RealizationItemBatch" rib 
-                         WHERE rib."productBatchId"::text = pb.id::text AND rib."createdAt"::date <= $1::date
+                         JOIN "RealizationItem" ri ON ri.id = rib."realizationItemId"
+                         JOIN "Realization" r ON r.id = ri."realizationId"
+                         WHERE rib."productBatchId"::text = pb.id::text AND r."date" < ($1::date + interval '1 day')
                         ), 0) as outgoing
                 FROM "ProductBatch" pb
                 LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
@@ -83,8 +85,8 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
             WITH BatchIncoming AS (
                 SELECT 
                     pb."productId",
-                    SUM(CASE WHEN pb."createdAt"::date < $1::date THEN pb."quantityTotal" ELSE 0 END) as start_in,
-                    SUM(CASE WHEN pb."createdAt"::date >= $1::date AND pb."createdAt"::date <= $2::date THEN pb."quantityTotal" ELSE 0 END) as period_in
+                    SUM(CASE WHEN gr."date" < $1::date THEN pb."quantityTotal" ELSE 0 END) as start_in,
+                    SUM(CASE WHEN gr."date" >= $1::date AND gr."date" < ($2::date + interval '1 day') THEN pb."quantityTotal" ELSE 0 END) as period_in
                 FROM "ProductBatch" pb
                 JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
                 WHERE gr."warehouseId"::text = $3
@@ -93,11 +95,13 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
             BatchOutgoing AS (
                 SELECT 
                     pb."productId",
-                    SUM(CASE WHEN rib."createdAt"::date < $1::date THEN rib.quantity ELSE 0 END) as start_out,
-                    SUM(CASE WHEN rib."createdAt"::date >= $1::date AND rib."createdAt"::date <= $2::date THEN rib.quantity ELSE 0 END) as period_out
+                    SUM(CASE WHEN r."date" < $1::date THEN rib.quantity ELSE 0 END) as start_out,
+                    SUM(CASE WHEN r."date" >= $1::date AND r."date" < ($2::date + interval '1 day') THEN rib.quantity ELSE 0 END) as period_out
                 FROM "RealizationItemBatch" rib
                 JOIN "ProductBatch" pb ON pb.id::text = rib."productBatchId"::text
                 JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
+                JOIN "RealizationItem" ri ON ri.id = rib."realizationItemId"
+                JOIN "Realization" r ON r.id = ri."realizationId"
                 WHERE gr."warehouseId"::text = $3
                 GROUP BY pb."productId"
             )
@@ -141,13 +145,13 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
         let filters = '';
 
         if (dateFrom && dateTo) {
-            filters += ` AND r.date::date >= $${params.length + 1}::date AND r.date::date <= $${params.length + 2}::date`;
+            filters += ` AND r.date >= $${params.length + 1}::date AND r.date < ($${params.length + 2}::date + interval '1 day')`;
             params.push(dateFrom, dateTo);
         } else if (dateFrom) {
-            filters += ` AND r.date::date >= $${params.length + 1}::date`;
+            filters += ` AND r.date >= $${params.length + 1}::date`;
             params.push(dateFrom);
         } else if (dateTo) {
-            filters += ` AND r.date::date <= $${params.length + 1}::date`;
+            filters += ` AND r.date < ($${params.length + 1}::date + interval '1 day')`;
             params.push(dateTo);
         }
 
@@ -189,13 +193,13 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
         let filters = '';
 
         if (dateFrom && dateTo) {
-            filters += ` AND r.date::date >= $${params.length + 1}::date AND r.date::date <= $${params.length + 2}::date`;
+            filters += ` AND r.date >= $${params.length + 1}::date AND r.date < ($${params.length + 2}::date + interval '1 day')`;
             params.push(dateFrom, dateTo);
         } else if (dateFrom) {
-            filters += ` AND r.date::date >= $${params.length + 1}::date`;
+            filters += ` AND r.date >= $${params.length + 1}::date`;
             params.push(dateFrom);
         } else if (dateTo) {
-            filters += ` AND r.date::date <= $${params.length + 1}::date`;
+            filters += ` AND r.date < ($${params.length + 1}::date + interval '1 day')`;
             params.push(dateTo);
         }
 
@@ -280,15 +284,15 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
         
         // Date filters for the ledger window
         if (dateFrom && dateTo) {
-            dateFilter = ` AND r.date::date >= $${pId}::date AND r.date::date <= $${pId+1}::date`;
+            dateFilter = ` AND r.date >= $${pId}::date AND r.date < ($${pId+1}::date + interval '1 day')`;
             params.push(dateFrom, dateTo);
             pId += 2;
         } else if (dateFrom) {
-            dateFilter = ` AND r.date::date >= $${pId}::date`;
+            dateFilter = ` AND r.date >= $${pId}::date`;
             params.push(dateFrom);
             pId += 1;
         } else if (dateTo) {
-            dateFilter = ` AND r.date::date <= $${pId}::date`;
+            dateFilter = ` AND r.date < ($${pId}::date + interval '1 day')`;
             params.push(dateTo);
             pId += 1;
         }
@@ -310,7 +314,7 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
                     UNION ALL
                     SELECT amount, type, date, "counterpartyId" FROM "CashTransaction" WHERE "isDeleted" = FALSE
                 ) r
-                WHERE 1=1 ${clientIdsFilter} AND r.date::date < $${startParams.length + 1}::date
+                WHERE 1=1 ${clientIdsFilter} AND r.date < $${startParams.length + 1}::date
                 GROUP BY r."counterpartyId"
             `;
             startParams.push(dateFrom);
@@ -430,13 +434,13 @@ router.get('/cashflow', async (req: Request, res: Response) => {
         }
 
         if (dateFrom && dateTo) {
-            filters += ` AND t.date::date >= $${params.length + 1}::date AND t.date::date <= $${params.length + 2}::date`;
+            filters += ` AND t.date >= $${params.length + 1}::date AND t.date < ($${params.length + 2}::date + interval '1 day')`;
             params.push(dateFrom, dateTo);
         } else if (dateFrom) {
-            filters += ` AND t.date::date >= $${params.length + 1}::date`;
+            filters += ` AND t.date >= $${params.length + 1}::date`;
             params.push(dateFrom);
         } else if (dateTo) {
-            filters += ` AND t.date::date <= $${params.length + 1}::date`;
+            filters += ` AND t.date < ($${params.length + 1}::date + interval '1 day')`;
             params.push(dateTo);
         }
 
@@ -448,7 +452,7 @@ router.get('/cashflow', async (req: Request, res: Response) => {
                     COALESCE(SUM(CASE WHEN type = 'INCOME' THEN amount ELSE 0 END), 0) -
                     COALESCE(SUM(CASE WHEN type = 'OUTCOME' THEN amount ELSE 0 END), 0) as "startBal"
                 FROM "CashTransaction"
-                WHERE "isDeleted" = FALSE ${startFilters} AND date::date < $${startParams.length + 1}::date
+                WHERE "isDeleted" = FALSE ${startFilters} AND date < $${startParams.length + 1}::date
             `;
             startParams.push(dateFrom);
             const startRes = await pool.query(startQuery, startParams);
