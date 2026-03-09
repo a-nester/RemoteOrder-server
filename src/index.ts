@@ -14,6 +14,8 @@ import reportsRoutes from './routes/reports.js';
 import authRoutes from './routes/auth.js';
 import usersRoutes from './routes/users.js';
 import financeRoutes from './routes/finance.js';
+import collectionScheduleRoutes from './routes/collection-schedule.js';
+import pickingListRoutes from './routes/picking-list.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -49,6 +51,8 @@ app.use('/api/realizations', realizationRoutes);
 app.use('/api/goods-receipt', goodsReceiptRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/finance', financeRoutes);
+app.use('/api/collection-schedule', collectionScheduleRoutes);
+app.use('/api/picking-list', pickingListRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -81,6 +85,7 @@ import { runMigration as addDocNumberMigration } from './migrations/add_doc_numb
 import { runMigration as addUserCounterpartyMigration } from './migrations/add_user_counterparty.js';
 import { runMigration as alterQuantityDecimalsMigration } from './migrations/alter_quantity_decimals.js';
 import { runMigration as addCounterpartySubgroupsMigration } from './migrations/add_counterparty_subgroups.js';
+import { runMigration as createCollectionScheduleMigration } from './migrations/010_collection_planner.js';
 
 const start = async () => {
   try {
@@ -93,6 +98,7 @@ const start = async () => {
     await addUserCounterpartyMigration();
     await alterQuantityDecimalsMigration();
     await addCounterpartySubgroupsMigration();
+    await createCollectionScheduleMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
