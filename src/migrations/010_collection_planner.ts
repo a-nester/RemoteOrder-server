@@ -8,17 +8,17 @@ export const runMigration = async () => {
             -- Create collection_schedule table
             CREATE TABLE IF NOT EXISTS collection_schedule (
               id SERIAL PRIMARY KEY,
-              date DATE NOT NULL,
               client_id UUID REFERENCES "Counterparty"(id) ON DELETE CASCADE,
               status VARCHAR(20) DEFAULT 'planned',
               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
-            -- Add index on date for fast querying by week/day
-            CREATE INDEX IF NOT EXISTS idx_collection_schedule_date ON collection_schedule(date);
-            
-            -- Add composite index to quickly load a client's plan
-            CREATE INDEX IF NOT EXISTS idx_collection_schedule_client ON collection_schedule(client_id, date);
+            -- Add day_of_week column if it doesn't exist
+            ALTER TABLE collection_schedule ADD COLUMN IF NOT EXISTS day_of_week SMALLINT CHECK (day_of_week BETWEEN 1 AND 7);
+
+            -- Add new indices
+            CREATE INDEX IF NOT EXISTS idx_collection_schedule_day ON collection_schedule(day_of_week);
+            CREATE INDEX IF NOT EXISTS idx_collection_schedule_client_day ON collection_schedule(client_id, day_of_week);
         `);
 
         console.log('Migration successful: collection_schedule table created.');
