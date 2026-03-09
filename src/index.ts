@@ -86,6 +86,7 @@ import { runMigration as addUserCounterpartyMigration } from './migrations/add_u
 import { runMigration as alterQuantityDecimalsMigration } from './migrations/alter_quantity_decimals.js';
 import { runMigration as addCounterpartySubgroupsMigration } from './migrations/add_counterparty_subgroups.js';
 import { runMigration as createCollectionScheduleMigration } from './migrations/010_collection_planner.js';
+import { runMigration as collectionScheduleCyclicalMigration } from './migrations/011_collection_planner_cyclical.js';
 
 const start = async () => {
   try {
@@ -99,6 +100,7 @@ const start = async () => {
     await alterQuantityDecimalsMigration();
     await addCounterpartySubgroupsMigration();
     await createCollectionScheduleMigration();
+    await collectionScheduleCyclicalMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
