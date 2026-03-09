@@ -9,7 +9,7 @@ export const runMigration = async () => {
             CREATE TABLE IF NOT EXISTS collection_schedule (
               id SERIAL PRIMARY KEY,
               date DATE NOT NULL,
-              client_id INTEGER REFERENCES counterparties(id) ON DELETE CASCADE,
+              client_id UUID REFERENCES "Counterparty"(id) ON DELETE CASCADE,
               status VARCHAR(20) DEFAULT 'planned',
               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
