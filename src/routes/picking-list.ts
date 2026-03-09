@@ -20,18 +20,18 @@ router.get("/", async (req, res) => {
         SELECT client_id FROM collection_schedule WHERE TO_CHAR(date, 'YYYY-MM-DD') = $1
       ),
       relevant_orders AS (
-        SELECT id FROM orders 
-        WHERE client_id IN (SELECT client_id FROM scheduled_clients)
-        AND TO_CHAR(date, 'YYYY-MM-DD') = $1
+        SELECT id FROM "Order" 
+        WHERE "counterpartyId" IN (SELECT client_id FROM scheduled_clients)
+        AND TO_CHAR("createdAt", 'YYYY-MM-DD') = $1
       )
       SELECT 
         p.id as product_id,
         p.name as product_name,
         p.sku,
         SUM(oi.quantity) as total_quantity
-      FROM order_items oi
-      JOIN products p ON oi.product_id = p.id
-      WHERE oi.order_id IN (SELECT id FROM relevant_orders)
+      FROM "OrderItem" oi
+      JOIN "Product" p ON oi."productId" = p.id
+      WHERE oi."orderId" IN (SELECT id FROM relevant_orders)
       GROUP BY p.id, p.name, p.sku
       ORDER BY p.name ASC
       `,

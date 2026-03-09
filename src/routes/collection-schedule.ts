@@ -19,10 +19,10 @@ router.get("/", async (req, res) => {
         cs.client_id, 
         c.name as client_name, 
         cs.status,
-        (SELECT COUNT(*) FROM orders o WHERE o.client_id = cs.client_id AND TO_CHAR(o.date, 'YYYY-MM-DD') = TO_CHAR(cs.date, 'YYYY-MM-DD')) as order_count,
-        (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi JOIN orders o ON oi.order_id = o.id WHERE o.client_id = cs.client_id AND TO_CHAR(o.date, 'YYYY-MM-DD') = TO_CHAR(cs.date, 'YYYY-MM-DD')) as product_count
+        (SELECT COUNT(*) FROM "Order" o WHERE o."counterpartyId" = cs.client_id AND TO_CHAR(o."createdAt", 'YYYY-MM-DD') = TO_CHAR(cs.date, 'YYYY-MM-DD')) as order_count,
+        (SELECT COALESCE(SUM(oi.quantity), 0) FROM "OrderItem" oi JOIN "Order" o ON oi."orderId" = o.id WHERE o."counterpartyId" = cs.client_id AND TO_CHAR(o."createdAt", 'YYYY-MM-DD') = TO_CHAR(cs.date, 'YYYY-MM-DD')) as product_count
       FROM collection_schedule cs
-      JOIN counterparties c ON cs.client_id = c.id
+      JOIN "Counterparty" c ON cs.client_id = c.id
       WHERE cs.date >= $1 AND cs.date <= $2
       ORDER BY cs.date, c.name
       `,
@@ -45,7 +45,7 @@ router.post("/", async (req, res) => {
       INSERT INTO collection_schedule (date, client_id, status)
       VALUES ($1, $2, 'planned')
       RETURNING id, TO_CHAR(date, 'YYYY-MM-DD') as date, client_id, status,
-        (SELECT name FROM counterparties WHERE id = $2) as client_name
+        (SELECT name FROM "Counterparty" WHERE id = $2) as client_name
       `,
       [date, clientId],
     );
@@ -140,8 +140,8 @@ router.get("/day-summary", async (req, res) => {
       )
       SELECT 
         (SELECT COUNT(*) FROM clients_on_day) as client_count,
-        (SELECT COUNT(*) FROM orders o WHERE o.client_id IN (SELECT client_id FROM clients_on_day) AND TO_CHAR(o.date, 'YYYY-MM-DD') = $1::text) as order_count,
-        (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi JOIN orders o ON oi.order_id = o.id WHERE o.client_id IN (SELECT client_id FROM clients_on_day) AND TO_CHAR(o.date, 'YYYY-MM-DD') = $1::text) as item_count
+        (SELECT COUNT(*) FROM "Order" o WHERE o."counterpartyId" IN (SELECT client_id FROM clients_on_day) AND TO_CHAR(o."createdAt", 'YYYY-MM-DD') = $1::text) as order_count,
+        (SELECT COALESCE(SUM(oi.quantity), 0) FROM "OrderItem" oi JOIN "Order" o ON oi."orderId" = o.id WHERE o."counterpartyId" IN (SELECT client_id FROM clients_on_day) AND TO_CHAR(o."createdAt", 'YYYY-MM-DD') = $1::text) as item_count
       `,
       [date],
     );
