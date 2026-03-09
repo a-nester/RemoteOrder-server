@@ -6,27 +6,27 @@ const router = express.Router();
 
 router.use(adminAuth as any);
 
-// Get schedule items between dates
+// Get schedule items for the week
 router.get("/", async (req, res) => {
-  const { from, to } = req.query;
-
   try {
     const result = await pool.query(
       `
+      WITH current_week_orders AS (
+          SELECT * FROM "Order" 
+          WHERE "createdAt" >= date_trunc('week', CURRENT_DATE)
+      )
       SELECT 
         cs.id, 
-        TO_CHAR(cs.date, 'YYYY-MM-DD') as date, 
+        cs.day_of_week as "dayOfWeek", 
         cs.client_id, 
         c.name as client_name, 
         cs.status,
-        (SELECT COUNT(*) FROM "Order" o WHERE o."counterpartyId" = cs.client_id AND TO_CHAR(o."createdAt", 'YYYY-MM-DD') = TO_CHAR(cs.date, 'YYYY-MM-DD')) as order_count,
-        (SELECT COALESCE(SUM(oi.quantity), 0) FROM "OrderItem" oi JOIN "Order" o ON oi."orderId" = o.id WHERE o."counterpartyId" = cs.client_id AND TO_CHAR(o."createdAt", 'YYYY-MM-DD') = TO_CHAR(cs.date, 'YYYY-MM-DD')) as product_count
+        (SELECT COUNT(*) FROM current_week_orders o WHERE o."counterpartyId" = cs.client_id AND EXTRACT(ISODOW FROM o."createdAt") = cs.day_of_week) as order_count,
+        (SELECT COALESCE(SUM(oi.quantity), 0) FROM "OrderItem" oi JOIN current_week_orders o ON oi."orderId" = o.id WHERE o."counterpartyId" = cs.client_id AND EXTRACT(ISODOW FROM o."createdAt") = cs.day_of_week) as product_count
       FROM collection_schedule cs
       JOIN "Counterparty" c ON cs.client_id = c.id
-      WHERE cs.date >= $1 AND cs.date <= $2
-      ORDER BY cs.date, c.name
-      `,
-      [from, to],
+      ORDER BY cs.day_of_week, c.name
+      `
     );
     res.json(result.rows);
   } catch (error) {
@@ -37,17 +37,17 @@ router.get("/", async (req, res) => {
 
 // Add new schedule item
 router.post("/", async (req, res) => {
-  const { date, clientId } = req.body;
+  const { dayOfWeek, clientId } = req.body;
 
   try {
     const result = await pool.query(
       `
-      INSERT INTO collection_schedule (date, client_id, status)
+      INSERT INTO collection_schedule (day_of_week, client_id, status)
       VALUES ($1, $2, 'planned')
-      RETURNING id, TO_CHAR(date, 'YYYY-MM-DD') as date, client_id, status,
+      RETURNING id, day_of_week as "dayOfWeek", client_id, status,
         (SELECT name FROM "Counterparty" WHERE id = $2) as client_name
       `,
-      [date, clientId],
+      [dayOfWeek, clientId],
     );
 
     res.status(201).json(result.rows[0]);
@@ -88,20 +88,20 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-// Update date (Drag and Drop)
-router.patch("/:id/date", async (req, res) => {
+// Update day (Drag and Drop)
+router.patch("/:id/day", async (req, res) => {
   const { id } = req.params;
-  const { date } = req.body;
+  const { dayOfWeek } = req.body;
 
   try {
     const result = await pool.query(
       `
       UPDATE collection_schedule
-      SET date = $1
+      SET day_of_week = $1
       WHERE id = $2
-      RETURNING id, TO_CHAR(date, 'YYYY-MM-DD') as date, client_id, status
+      RETURNING id, day_of_week as "dayOfWeek", client_id, status
       `,
-      [date, id],
+      [dayOfWeek, id],
     );
     
     if (result.rows.length === 0) {
@@ -110,8 +110,8 @@ router.patch("/:id/date", async (req, res) => {
     
     res.json(result.rows[0]);
   } catch (error) {
-    console.error("Failed to update date:", error);
-    res.status(500).json({ error: "Failed to update date" });
+    console.error("Failed to update day:", error);
+    res.status(500).json({ error: "Failed to update day" });
   }
 });
 
@@ -130,20 +130,25 @@ router.delete("/:id", async (req, res) => {
 
 // Day summary
 router.get("/day-summary", async (req, res) => {
-  const { date } = req.query;
+  const { dayOfWeek } = req.query;
 
   try {
     const result = await pool.query(
       `
       WITH clients_on_day AS (
-        SELECT client_id FROM collection_schedule WHERE date = $1
+        SELECT client_id FROM collection_schedule WHERE day_of_week = $1
+      ),
+      current_week_orders AS (
+        SELECT * FROM "Order" 
+        WHERE "createdAt" >= date_trunc('week', CURRENT_DATE) 
+        AND EXTRACT(ISODOW FROM "createdAt") = $1
       )
       SELECT 
         (SELECT COUNT(*) FROM clients_on_day) as client_count,
-        (SELECT COUNT(*) FROM "Order" o WHERE o."counterpartyId" IN (SELECT client_id FROM clients_on_day) AND TO_CHAR(o."createdAt", 'YYYY-MM-DD') = $1::text) as order_count,
-        (SELECT COALESCE(SUM(oi.quantity), 0) FROM "OrderItem" oi JOIN "Order" o ON oi."orderId" = o.id WHERE o."counterpartyId" IN (SELECT client_id FROM clients_on_day) AND TO_CHAR(o."createdAt", 'YYYY-MM-DD') = $1::text) as item_count
+        (SELECT COUNT(*) FROM current_week_orders o WHERE o."counterpartyId" IN (SELECT client_id FROM clients_on_day)) as order_count,
+        (SELECT COALESCE(SUM(oi.quantity), 0) FROM "OrderItem" oi JOIN current_week_orders o ON oi."orderId" = o.id WHERE o."counterpartyId" IN (SELECT client_id FROM clients_on_day)) as item_count
       `,
-      [date],
+      [dayOfWeek],
     );
     res.json(result.rows[0]);
   } catch (error) {

@@ -7,22 +7,23 @@ const router = express.Router();
 router.use(adminAuth as any);
 
 router.get("/", async (req, res) => {
-  const { date } = req.query;
+  const { dayOfWeek } = req.query;
 
-  if (!date) {
-    return res.status(400).json({ error: "Date parameter is required" });
+  if (!dayOfWeek) {
+    return res.status(400).json({ error: "dayOfWeek parameter is required" });
   }
 
   try {
     const result = await pool.query(
       `
       WITH scheduled_clients AS (
-        SELECT client_id FROM collection_schedule WHERE TO_CHAR(date, 'YYYY-MM-DD') = $1
+        SELECT client_id FROM collection_schedule WHERE day_of_week = $1
       ),
       relevant_orders AS (
         SELECT id FROM "Order" 
         WHERE "counterpartyId" IN (SELECT client_id FROM scheduled_clients)
-        AND TO_CHAR("createdAt", 'YYYY-MM-DD') = $1
+        AND "createdAt" >= date_trunc('week', CURRENT_DATE)
+        AND EXTRACT(ISODOW FROM "createdAt") = $1
       )
       SELECT 
         p.id as product_id,
@@ -35,7 +36,7 @@ router.get("/", async (req, res) => {
       GROUP BY p.id, p.name, p.sku
       ORDER BY p.name ASC
       `,
-      [date]
+      [dayOfWeek]
     );
 
     res.json(result.rows);
