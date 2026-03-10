@@ -183,9 +183,12 @@ router.post('/transactions', userAuth, async (req, res) => {
             } else if (type === 'OUTCOME') {
                 // Offset supplier debt -> GoodsReceipts
                 const unpaids = await client.query(`
-                    SELECT id, total as amount, "paidAmount" 
+                    SELECT 
+                        id, 
+                        COALESCE((SELECT SUM(total) FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = "GoodsReceipt".id), 0) as amount, 
+                        "paidAmount" 
                     FROM "GoodsReceipt"
-                    WHERE "counterpartyId" = $1 AND status = 'POSTED' AND "paidAmount" < total
+                    WHERE "providerId" = $1 AND status = 'POSTED' AND "paidAmount" < COALESCE((SELECT SUM(total) FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = "GoodsReceipt".id), 0)
                     ORDER BY "date" ASC
                 `, [counterpartyId]);
 
