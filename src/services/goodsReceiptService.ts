@@ -119,7 +119,8 @@ export class GoodsReceiptService {
                     item.productId,
                     Number(item.quantity),
                     Number(item.price),
-                    id // Link batch to this receipt
+                    id, // Link batch to this receipt
+                    doc.date // Explicitly set batch creation date to the document's date
                 );
             }
 
