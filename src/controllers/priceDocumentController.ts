@@ -179,7 +179,7 @@ export const applyDocument = async (req: Request, res: Response): Promise<any> =
                     "productId", "priceTypeId", "oldPrice", "newPrice", 
                     "effectiveDate", "createdBy", "reason", "createdAt"
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             `, [
                 productId,
                 doc.targetPriceTypeId,
@@ -187,7 +187,8 @@ export const applyDocument = async (req: Request, res: Response): Promise<any> =
                 price,
                 doc.date, // Effective date is document date
                 null, // User ID not passed currently, maybe from req.user?
-                `Price Document Applied`
+                `Price Document Applied`,
+                doc.date // Set createdAt to match the document date
             ]);
 
             // Update Product
