@@ -212,15 +212,33 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
         }
 
         const query = `
+            WITH BaseDocs AS (
+                SELECT 
+                    "counterpartyId",
+                    id,
+                    amount as "netAmount",
+                    profit as "netProfit"
+                FROM "Realization"
+                WHERE status = 'POSTED' ${filters.replace(/r\./g, '')}
+                
+                UNION ALL
+                
+                SELECT 
+                    "counterpartyId",
+                    id,
+                    -"totalAmount" as "netAmount",
+                    profit as "netProfit" -- BuyerReturn profit is already saved as negative
+                FROM "BuyerReturn"
+                WHERE status = 'POSTED' ${filters.replace(/r\./g, '')}
+            )
             SELECT 
                 c.id as "clientId",
                 c.name as "clientName",
-                COUNT(DISTINCT r.id) as "documentsCount",
-                SUM(r.amount) as "totalAmount",
-                SUM(r.profit) as "totalProfit"
-            FROM "Realization" r
-            LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
-            WHERE r.status = 'POSTED' ${filters}
+                COUNT(bd.id) as "documentsCount",
+                SUM(bd."netAmount") as "totalAmount",
+                SUM(bd."netProfit") as "totalProfit"
+            FROM BaseDocs bd
+            LEFT JOIN "Counterparty" c ON bd."counterpartyId" = c.id
             GROUP BY c.id, c.name
             ORDER BY "totalAmount" DESC NULLS LAST
         `;
@@ -260,22 +278,43 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
         }
 
         const query = `
+            WITH BaseItems AS (
+                SELECT 
+                    r."counterpartyId",
+                    ri."productId",
+                    ri.quantity as "netQty",
+                    ri.total as "netAmount",
+                    ri.total - COALESCE((
+                        SELECT SUM(rib.quantity * rib."enterPrice")
+                        FROM "RealizationItemBatch" rib
+                        WHERE rib."realizationItemId" = ri.id
+                    ), 0) as "netProfit"
+                FROM "RealizationItem" ri
+                JOIN "Realization" r ON r.id = ri."realizationId"
+                WHERE r.status = 'POSTED' ${filters}
+
+                UNION ALL
+
+                SELECT 
+                    br."counterpartyId",
+                    bri."productId",
+                    -bri.quantity as "netQty",
+                    -bri.total as "netAmount",
+                    -bri.total as "netProfit" -- Simplification: full refund counts against profit identically
+                FROM "BuyerReturnItem" bri
+                JOIN "BuyerReturn" br ON br.id = bri."buyerReturnId"
+                WHERE br.status = 'POSTED' ${filters.replace(/r\./g, 'br.')}
+            )
             SELECT 
                 p.id as "productId",
                 p.name as "productName",
                 p.category as "productCategory",
-                SUM(ri.quantity) as "totalQuantity",
-                SUM(ri.total) as "totalAmount",
-                SUM(ri.total) - COALESCE(SUM((
-                    SELECT SUM(rib.quantity * rib."enterPrice")
-                    FROM "RealizationItemBatch" rib
-                    WHERE rib."realizationItemId" = ri.id
-                )), 0) as "totalProfit"
-            FROM "RealizationItem" ri
-            JOIN "Realization" r ON r.id = ri."realizationId"
-            LEFT JOIN "Product" p ON p.id::text = ri."productId"::text
-            LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
-            WHERE r.status = 'POSTED' ${filters}
+                SUM(bi."netQty") as "totalQuantity",
+                SUM(bi."netAmount") as "totalAmount",
+                SUM(bi."netProfit") as "totalProfit"
+            FROM BaseItems bi
+            LEFT JOIN "Product" p ON p.id::text = bi."productId"::text
+            LEFT JOIN "Counterparty" c ON bi."counterpartyId" = c.id
             GROUP BY p.id, p.name, p.category
             ORDER BY "totalAmount" DESC NULLS LAST
         `;
@@ -356,10 +395,13 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
                     r."counterpartyId",
                     COALESCE(SUM(CASE WHEN r.type = 'REALIZATION' THEN r.amount ELSE 0 END), 0) +
                     COALESCE(SUM(CASE WHEN r.type = 'OUTCOME' THEN r.amount ELSE 0 END), 0) -
+                    COALESCE(SUM(CASE WHEN r.type = 'BUYER_RETURN' THEN r.amount ELSE 0 END), 0) -
                     COALESCE(SUM(CASE WHEN r.type = 'GOODS_RECEIPT' THEN r.amount ELSE 0 END), 0) -
                     COALESCE(SUM(CASE WHEN r.type = 'INCOME' THEN r.amount ELSE 0 END), 0) as "startBal"
                 FROM (
                     SELECT amount, 'REALIZATION' as type, date, "counterpartyId" FROM "Realization" WHERE status = 'POSTED'
+                    UNION ALL
+                    SELECT "totalAmount" as amount, 'BUYER_RETURN' as type, date, "counterpartyId" FROM "BuyerReturn" WHERE status = 'POSTED'
                     UNION ALL
                     SELECT (SELECT COALESCE(SUM(total), 0) FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = "GoodsReceipt".id) as amount, 'GOODS_RECEIPT' as type, date, "providerId" as "counterpartyId" FROM "GoodsReceipt" WHERE status = 'POSTED'
                     UNION ALL
@@ -389,6 +431,21 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
                     NULL as "comment",
                     r."counterpartyId"
                 FROM "Realization" r
+                WHERE r.status = 'POSTED' ${clientIdsFilter} ${dateFilter}
+
+                UNION ALL
+
+                SELECT 
+                    r.id as "documentId",
+                    r.date,
+                    'BUYER_RETURN' as "type",
+                    r.number as "docNumber",
+                    -r."totalAmount" as "balanceChange",
+                    0 as "debit",
+                    r."totalAmount" as "credit",
+                    r.comment,
+                    r."counterpartyId"
+                FROM "BuyerReturn" r
                 WHERE r.status = 'POSTED' ${clientIdsFilter} ${dateFilter}
 
                 UNION ALL
