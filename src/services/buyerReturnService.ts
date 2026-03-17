@@ -248,7 +248,7 @@ export class BuyerReturnService {
     // List
     static async getAll(filters: any) {
         let query = `
-            SELECT br.*, c.name as "clientName", w.name as "warehouseName"
+            SELECT br.*, c.name as "counterpartyName", w.name as "warehouseName"
             FROM "BuyerReturn" br
             LEFT JOIN "Counterparty" c ON c.id = br."counterpartyId"
             LEFT JOIN "Warehouse" w ON w.id = br."warehouseId"
