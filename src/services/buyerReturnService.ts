@@ -229,7 +229,7 @@ export class BuyerReturnService {
         if (docRes.rows.length === 0) return null;
 
         const itemsRes = await pool.query(`
-            SELECT bri.*, p.name as "productName", p.sku
+            SELECT bri.*, p.name as "productName"
             FROM "BuyerReturnItem" bri
             LEFT JOIN "Product" p ON p.id = bri."productId"
             WHERE bri."buyerReturnId" = $1
