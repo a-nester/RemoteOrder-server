@@ -41,7 +41,7 @@ router.post('/login', async (req: Request, res: Response) => {
                 warehouseId: user.warehouseId
             },
             JWT_SECRET,
-            { expiresIn: '24h' }
+            { expiresIn: '30d' }
         );
 
         // Return user info and token
