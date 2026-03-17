@@ -129,13 +129,18 @@ export class BuyerReturnService {
             let totalProfit = 0;
 
             for (const item of items) {
-                // Return stock = Add Stock
-                // The tricky part: we should use the refund cost as `enterPrice`.
+                // Retrieve the most recent enterPrice (cost price) for the returned product
+                const lastBatchRes = await client.query(
+                    `SELECT "enterPrice" FROM "ProductBatch" WHERE "productId" = $1 ORDER BY "createdAt" DESC LIMIT 1`,
+                    [item.productId]
+                );
+                const costPrice = lastBatchRes.rows.length > 0 ? Number(lastBatchRes.rows[0].enterPrice) : 0;
+
                 const batch = await InventoryService.addStock(
                     client,
                     item.productId,
                     Number(item.quantity),
-                    Number(item.price), // Refund price acts as enterPrice
+                    costPrice, // Refund price historically might be diff, but we re-stock at cost price
                     undefined, // Goods receipt ID
                     doc.date // The batch will be dated by the return doc
                 );
@@ -147,9 +152,10 @@ export class BuyerReturnService {
                     [item.id, batch.id, item.quantity]
                 );
 
-                // The logic logic implies: we gave back `item.total` money, which hits total sales profit negatively.
-                // We'll record $-total as `profit` for the reporting to aggregate nicely as a subtraction.
-                totalProfit -= Number(item.total);
+                // Reversing the profit margin that was generated from the initial sale
+                // Original profit = (sellPrice - costPrice) * quantity = (item.total) - (costPrice * quantity)
+                const itemMargin = (Number(item.price) - costPrice) * Number(item.quantity);
+                totalProfit -= itemMargin;
             }
 
             // Update Status + Profit
@@ -264,5 +270,30 @@ export class BuyerReturnService {
 
         const result = await pool.query(query, params);
         return result.rows;
+    }
+
+    static async delete(id: string) {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            
+            const docRes = await client.query('SELECT status FROM "BuyerReturn" WHERE id = $1 FOR UPDATE', [id]);
+            if (docRes.rows.length === 0) throw new Error('Document not found');
+            
+            if (docRes.rows[0].status === 'POSTED') {
+                throw new Error('Cannot delete a POSTED document');
+            }
+
+            await client.query('DELETE FROM "BuyerReturnItem" WHERE "buyerReturnId" = $1', [id]);
+            await client.query('DELETE FROM "BuyerReturn" WHERE id = $1', [id]);
+            
+            await client.query('COMMIT');
+            return { success: true };
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
     }
 }

@@ -82,4 +82,18 @@ export class BuyerReturnController {
             res.status(500).json({ error: 'Failed to unpost document' });
         }
     }
+
+    // DELETE /api/buyer-returns/:id
+    static async delete(req: any, res: any) {
+        try {
+            await BuyerReturnService.delete(req.params.id);
+            res.json({ success: true });
+        } catch (error: any) {
+            console.error('Delete BuyerReturn error:', error);
+            if (error.message === 'Cannot delete a POSTED document' || error.message === 'Document not found') {
+                return res.status(400).json({ error: error.message });
+            }
+            res.status(500).json({ error: 'Failed to delete' });
+        }
+    }
 }

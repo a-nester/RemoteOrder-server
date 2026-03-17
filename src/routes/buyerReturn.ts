@@ -18,6 +18,9 @@ router.post('/', BuyerReturnController.create);
 // Update existing return draft
 router.put('/:id', BuyerReturnController.update);
 
+// Delete draft
+router.delete('/:id', BuyerReturnController.delete);
+
 // Post (execute stock return and profit reduction)
 router.post('/:id/post', BuyerReturnController.post);
 
