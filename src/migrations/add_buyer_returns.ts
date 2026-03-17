@@ -1,7 +1,10 @@
-import { Pool } from 'pg';
+import pool from '../db.js';
 
-export async function up(pool: Pool) {
-  await pool.query(`
+export const runMigration = async () => {
+    const client = await pool.connect();
+    try {
+        console.log('Running migration: Add Buyer Return tables');
+        await client.query(`
     CREATE TABLE IF NOT EXISTS "BuyerReturn" (
       "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       "number" VARCHAR(255) NOT NULL,
@@ -36,11 +39,11 @@ export async function up(pool: Pool) {
       "quantity" DECIMAL(10, 3) NOT NULL,
       "createdAt" TIMESTAMP NOT NULL DEFAULT NOW()
     );
-  `);
-}
-
-export async function down(pool: Pool) {
-  await pool.query(`DROP TABLE IF EXISTS "BuyerReturnItemBatch";`);
-  await pool.query(`DROP TABLE IF EXISTS "BuyerReturnItem";`);
-  await pool.query(`DROP TABLE IF EXISTS "BuyerReturn";`);
-}
+        `);
+        console.log('Migration successful: Buyer Returns tables created');
+    } catch (error) {
+        console.error('Migration failed:', error);
+    } finally {
+        client.release();
+    }
+};
