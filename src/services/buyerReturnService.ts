@@ -222,7 +222,7 @@ export class BuyerReturnService {
             FROM "BuyerReturn" br
             LEFT JOIN "Counterparty" c ON c.id = br."counterpartyId"
             LEFT JOIN "Warehouse" w ON w.id = br."warehouseId"
-            LEFT JOIN "User" u ON u.id = br."createdBy"
+            LEFT JOIN "User" u ON u.id::text = br."createdBy"
             WHERE br.id = $1
         `, [id]);
 
