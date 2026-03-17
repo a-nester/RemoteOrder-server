@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import pool from '../db.js';
+import { PriceDocumentService } from '../services/priceDocumentService.js';
 
 export const createDocument = async (req: Request, res: Response): Promise<any> => {
     const { date, comment, targetPriceTypeId, inputMethod, sourcePriceTypeId, markupPercentage, roundingMethod } = req.body;

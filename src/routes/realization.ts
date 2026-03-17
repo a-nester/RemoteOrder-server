@@ -3,6 +3,7 @@ import pool from '../db.js';
 import { userAuth, AuthRequest } from '../middleware/auth.js';
 import { generateDocNumber } from '../utils/docNumberGenerator.js';
 import { InventoryService } from '../services/inventoryService.js';
+import { RealizationService } from '../services/realizationService.js';
 
 const router = express.Router();
 
@@ -240,142 +241,24 @@ router.put('/:id', userAuth, async (req, res) => {
 // POST (Провести) Realization
 
 router.post('/:id/post', userAuth, async (req, res) => {
-    const { id } = req.params;
-    const client = await pool.connect();
-
     try {
-        await client.query('BEGIN');
-
-        // 1. Get current realization
-        const docRes = await client.query('SELECT * FROM "Realization" WHERE id = $1 FOR UPDATE', [id]);
-        if (docRes.rowCount === 0) throw new Error('Realization not found');
-        const doc = docRes.rows[0];
-
-        if (doc.status === 'POSTED') {
-            throw new Error('Realization is already POSTED');
-        }
-
-        // 2. Get items
-        const itemsRes = await client.query('SELECT * FROM "RealizationItem" WHERE "realizationId" = $1', [id]);
-        const items = itemsRes.rows;
-
-        let totalCostPrice = 0;
-        let totalSellPrice = Number(doc.amount);
-
-        // 3. Process each item (FIFO deduct)
-        for (const item of items) {
-            const productId = item.productId;
-            const quantityNeeded = Number(item.quantity);
-
-            // Deduct stock and get breakdown of batches used
-            const deductions = await InventoryService.deductStock(client, productId, quantityNeeded, doc.warehouseId);
-
-            for (const deduction of deductions) {
-                // Record the batch deduction
-                await client.query(`
-                    INSERT INTO "RealizationItemBatch" ("realizationItemId", "productBatchId", "quantity", "enterPrice")
-                    VALUES ($1, $2, $3, $4)
-                `, [item.id, deduction.batchId, deduction.quantity, deduction.enterPrice]);
-
-                // Accumulate cost price
-                totalCostPrice += (deduction.quantity * deduction.enterPrice);
-            }
-        }
-
-        // 4. Calculate profit
-        const profit = totalSellPrice - totalCostPrice;
-
-        // 5. Build comment tag if any profit warning
-        let statusComment = doc.comment ? doc.comment + ' ' : '';
-        if (profit < 0) statusComment += '[WARNING: Negative Profit]';
-
-        // 6. Update Realization Status
-        await client.query(`
-            UPDATE "Realization"
-            SET "status" = 'POSTED', "profit" = $1, "comment" = $2, "updatedAt" = NOW()
-            WHERE id = $3
-        `, [profit, statusComment.trim() || null, id]);
-
-        // 7. Update linked Order if exists
-        if (doc.orderId) {
-            await client.query(`UPDATE "Order" SET "status" = 'COMPLETED', "updatedAt" = NOW() WHERE "id" = $1`, [doc.orderId]);
-        }
-
-        await client.query('COMMIT');
-        res.json({ success: true, profit });
-
+        const result = await RealizationService.post(req.params.id as string);
+        res.json(result);
     } catch (error) {
-        await client.query('ROLLBACK');
         console.error('Error posting realization:', error);
         res.status(400).json({ message: error instanceof Error ? error.message : 'Failed to post' });
-    } finally {
-        client.release();
     }
 });
 
 // UNPOST (розпровести) Realization
 
 router.post('/:id/unpost', userAuth, async (req, res) => {
-    const id = req.params.id;
-
-    if (!id || Array.isArray(id)) {
-        return res.status(400).json({ message: 'Invalid realization id' });}
-    const client = await pool.connect();
-
     try {
-        await client.query('BEGIN');
-
-        // 1️⃣ Заблокувати реалізацію
-        const docRes = await client.query(
-            'SELECT * FROM "Realization" WHERE id = $1 FOR UPDATE',
-            [id]
-        );
-
-        if (docRes.rowCount === 0) throw new Error('Realization not found');
-
-        const realization = docRes.rows[0];
-
-        if (realization.status !== 'POSTED')
-            throw new Error('Only POSTED realizations can be unposted');
-
-        // 2️⃣ Повернення складу через InventoryService
-        await InventoryService.returnStock(client, id);
-
-        // 3️⃣ Видалення batch записів
-        await client.query(`
-            DELETE FROM "RealizationItemBatch"
-            WHERE "realizationItemId" IN (
-                SELECT id FROM "RealizationItem"
-                WHERE "realizationId" = $1
-            )
-        `, [id]);
-
-        // 4️⃣ Оновлення статусу і profit
-        // Якщо profit колонка NOT NULL, ставимо 0
-        const resetProfit = realization.profit !== undefined ? 0 : null;
-
-        await client.query(`
-            UPDATE "Realization"
-            SET status = 'DRAFT',
-                profit = $1,
-                "updatedAt" = NOW()
-            WHERE id = $2
-        `, [resetProfit, id]);
-
-        // 5. Revert linked Order if exists
-        if (realization.orderId) {
-            await client.query(`UPDATE "Order" SET "status" = 'ACCEPTED', "updatedAt" = NOW() WHERE "id" = $1`, [realization.orderId]);
-        }
-
-        await client.query('COMMIT');
-        res.json({ success: true });
-
+        const result = await RealizationService.unpost(req.params.id as string);
+        res.json(result);
     } catch (error: any) {
-        await client.query('ROLLBACK');
         console.error('UNPOST ERROR:', error);
         res.status(400).json({ message: error.message || 'Failed to unpost realization' });
-    } finally {
-        client.release();
     }
 });
 

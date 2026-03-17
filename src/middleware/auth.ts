@@ -40,18 +40,22 @@ export const adminAuth = (req: AuthRequest, res: Response, next: NextFunction) =
 };
 
 export const userAuth = (req: AuthRequest, res: Response, next: NextFunction) => {
+    let token: string | undefined = '';
     const authHeader = req.headers.authorization;
+    
     if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.split(' ')[1];
-        if (!token) return res.status(401).json({ error: 'Token missing' });
-
-        try {
-            const decoded = jwt.verify(token, JWT_SECRET);
-            req.user = decoded;
-            return next();
-        } catch (e) {
-            return res.status(401).json({ error: 'Invalid token' });
-        }
+        token = authHeader.split(' ')[1];
+    } else if (req.query.token && typeof req.query.token === 'string') {
+        token = req.query.token;
     }
-    return res.status(401).json({ error: 'Authorization header required' });
+
+    if (!token) return res.status(401).json({ error: 'Token missing or Authorization header required' });
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.user = decoded;
+        return next();
+    } catch (e) {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
 };

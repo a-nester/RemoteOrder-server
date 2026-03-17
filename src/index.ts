@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { connectDB, disconnectDB } from './db.js';
+import { lockMiddleware } from './middleware/lockMiddleware.js';
 import syncRoutes from './routes/sync.js';
 import adminRoutes from './routes/admin.js';
 import priceTypeRoutes from './routes/priceTypes.js';
@@ -17,6 +18,7 @@ import usersRoutes from './routes/users.js';
 import financeRoutes from './routes/finance.js';
 import collectionScheduleRoutes from './routes/collection-schedule.js';
 import pickingListRoutes from './routes/picking-list.js';
+import repostRoutes from './routes/repost.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -31,6 +33,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
+app.use(lockMiddleware);
 
 // Serve static files from the React app
 // Using local copy of build for Render deployment
@@ -44,6 +47,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api', syncRoutes);
 app.use('/api/admin/users', usersRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/service/repost-documents', repostRoutes);
 app.use('/api/admin', priceTypeRoutes);
 app.use('/api/price-documents', priceDocumentRoutes);
 app.use('/api', counterpartyRoutes);
@@ -91,6 +95,7 @@ import { runMigration as createCollectionScheduleMigration } from './migrations/
 import { runMigration as collectionScheduleCyclicalMigration } from './migrations/011_collection_planner_cyclical.js';
 import { runMigration as addBuyerReturnsMigration } from './migrations/add_buyer_returns.js';
 import { runMigration as fixBuyerReturnCreatedByMigration } from './migrations/fix_buyerreturn_createdby.js';
+import { runMigration as createSystemLockMigration } from './migrations/100_system_lock.js';
 
 const start = async () => {
   try {
@@ -107,6 +112,7 @@ const start = async () => {
     await collectionScheduleCyclicalMigration();
     await addBuyerReturnsMigration();
     await fixBuyerReturnCreatedByMigration();
+    await createSystemLockMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
