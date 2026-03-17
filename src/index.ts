@@ -95,7 +95,7 @@ import { runMigration as createCollectionScheduleMigration } from './migrations/
 import { runMigration as collectionScheduleCyclicalMigration } from './migrations/011_collection_planner_cyclical.js';
 import { runMigration as addBuyerReturnsMigration } from './migrations/add_buyer_returns.js';
 import { runMigration as fixBuyerReturnCreatedByMigration } from './migrations/fix_buyerreturn_createdby.js';
-import { runMigration as createSystemLockMigration } from './migrations/100_system_lock.js';
+import { runMigration as createDocumentLockMigration } from './migrations/100_document_lock.js';
 
 const start = async () => {
   try {
@@ -112,7 +112,7 @@ const start = async () => {
     await collectionScheduleCyclicalMigration();
     await addBuyerReturnsMigration();
     await fixBuyerReturnCreatedByMigration();
-    await createSystemLockMigration();
+    await createDocumentLockMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);

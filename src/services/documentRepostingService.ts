@@ -14,13 +14,13 @@ export class DocumentRepostingService {
             client = await pool.connect();
             
             // 1. Acquire System Lock
-            const lockCheck = await client.query('SELECT "isLocked" FROM "SystemLock" WHERE id = $1', ['document_operations']);
+            const lockCheck = await client.query('SELECT "isLocked" FROM "DocumentLock" WHERE id = $1', ['document_operations']);
             if (lockCheck.rows.length > 0 && lockCheck.rows[0].isLocked) {
                 throw new Error('System is already locked. Reposting might already be in progress.');
             }
 
             // Lock it
-            await client.query(`UPDATE "SystemLock" SET "isLocked" = true, "lockedBy" = $1, "lockedAt" = NOW(), reason = 'Bulk document reposting' WHERE id = 'document_operations'`, [userId]);
+            await client.query(`UPDATE "DocumentLock" SET "isLocked" = true, "lockedBy" = $1, "lockedAt" = NOW(), reason = 'Bulk document reposting' WHERE id = 'document_operations'`, [userId]);
             
             this.emitLog('Starting Document Reposting process...');
             this.emitLog('System locked for maintenance.');
@@ -119,7 +119,7 @@ export class DocumentRepostingService {
             if (client) {
                 // Release System Lock
                 try {
-                    await client.query(`UPDATE "SystemLock" SET "isLocked" = false, "lockedBy" = null, "lockedAt" = null, reason = null WHERE id = 'document_operations'`);
+                    await client.query(`UPDATE "DocumentLock" SET "isLocked" = false, "lockedBy" = null, "lockedAt" = null, reason = null WHERE id = 'document_operations'`);
                     this.emitLog('System unlocked.');
                 } catch (e) {
                     console.error('Failed to release system lock!', e);

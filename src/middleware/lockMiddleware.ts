@@ -17,7 +17,7 @@ export const lockMiddleware = async (req: Request, res: Response, next: NextFunc
 
         if (isProtected) {
             try {
-                const result = await pool.query('SELECT "isLocked", "reason" FROM "SystemLock" WHERE id = $1', ['document_operations']);
+                const result = await pool.query('SELECT "isLocked", "reason" FROM "DocumentLock" WHERE id = $1', ['document_operations']);
                 if (result.rows.length > 0 && result.rows[0].isLocked) {
                     return res.status(503).json({
                         error: 'System is currently locked for maintenance',
@@ -25,7 +25,7 @@ export const lockMiddleware = async (req: Request, res: Response, next: NextFunc
                     });
                 }
             } catch (error) {
-                console.error('SystemLock check failed:', error);
+                console.error('DocumentLock check failed:', error);
                 // If the check fails (e.g., db down), we could fail-closed. 
                 // But typically if the db is down, the operation will fail anyway.
             }
