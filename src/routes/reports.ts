@@ -259,29 +259,34 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
     try {
         const { dateFrom, dateTo, counterparty } = req.query;
         let params: any[] = [];
-        let filters = '';
+        let rFilters = '';
+        let brFilters = '';
 
         if (dateFrom && dateTo) {
-            filters += ` AND r.date >= $${params.length + 1}::date AND r.date < ($${params.length + 2}::date + interval '1 day')`;
+            rFilters += ` AND r.date >= $${params.length + 1}::date AND r.date < ($${params.length + 2}::date + interval '1 day')`;
+            brFilters += ` AND br.date >= $${params.length + 1}::date AND br.date < ($${params.length + 2}::date + interval '1 day')`;
             params.push(dateFrom, dateTo);
         } else if (dateFrom) {
-            filters += ` AND r.date >= $${params.length + 1}::date`;
+            rFilters += ` AND r.date >= $${params.length + 1}::date`;
+            brFilters += ` AND br.date >= $${params.length + 1}::date`;
             params.push(dateFrom);
         } else if (dateTo) {
-            filters += ` AND r.date < ($${params.length + 1}::date + interval '1 day')`;
+            rFilters += ` AND r.date < ($${params.length + 1}::date + interval '1 day')`;
+            brFilters += ` AND br.date < ($${params.length + 1}::date + interval '1 day')`;
             params.push(dateTo);
         }
 
         if (counterparty) {
-            filters += ` AND c.name ILIKE $${params.length + 1}`;
+            rFilters += ` AND c.name ILIKE $${params.length + 1}`;
+            brFilters += ` AND c.name ILIKE $${params.length + 1}`;
             params.push(`%${counterparty}%`);
         }
 
         const query = `
             WITH BaseItems AS (
                 SELECT 
-                    r."counterpartyId",
-                    ri."productId",
+                    r."counterpartyId"::text as "counterpartyId",
+                    ri."productId"::text as "productId",
                     ri.quantity as "netQty",
                     ri.total as "netAmount",
                     ri.total - COALESCE((
@@ -291,19 +296,27 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                     ), 0) as "netProfit"
                 FROM "RealizationItem" ri
                 JOIN "Realization" r ON r.id = ri."realizationId"
-                WHERE r.status = 'POSTED' ${filters}
+                LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
+                WHERE r.status = 'POSTED' ${rFilters}
 
                 UNION ALL
 
                 SELECT 
-                    br."counterpartyId",
-                    bri."productId",
+                    br."counterpartyId"::text as "counterpartyId",
+                    bri."productId"::text as "productId",
                     -bri.quantity as "netQty",
                     -bri.total as "netAmount",
-                    -bri.total as "netProfit" -- Simplification: full refund counts against profit identically
+                    (COALESCE((
+                        SELECT pb."enterPrice"
+                        FROM "BuyerReturnItemBatch" brib
+                        JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
+                        WHERE brib."buyerReturnItemId" = bri.id
+                        LIMIT 1
+                    ), 0) * bri.quantity) - bri.total as "netProfit"
                 FROM "BuyerReturnItem" bri
                 JOIN "BuyerReturn" br ON br.id = bri."buyerReturnId"
-                WHERE br.status = 'POSTED' ${filters.replace(/r\./g, 'br.')}
+                LEFT JOIN "Counterparty" c ON br."counterpartyId" = c.id
+                WHERE br.status = 'POSTED' ${brFilters}
             )
             SELECT 
                 p.id as "productId",
@@ -313,8 +326,7 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                 SUM(bi."netAmount") as "totalAmount",
                 SUM(bi."netProfit") as "totalProfit"
             FROM BaseItems bi
-            LEFT JOIN "Product" p ON p.id::text = bi."productId"::text
-            LEFT JOIN "Counterparty" c ON bi."counterpartyId" = c.id
+            LEFT JOIN "Product" p ON p.id::text = bi."productId"
             GROUP BY p.id, p.name, p.category
             ORDER BY "totalAmount" DESC NULLS LAST
         `;

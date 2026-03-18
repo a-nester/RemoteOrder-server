@@ -12,6 +12,7 @@ import organizationRoutes from './routes/organization.js';
 import realizationRoutes from './routes/realization.js';
 import goodsReceiptRoutes from './routes/goodsReceipt.js';
 import buyerReturnRoutes from './routes/buyerReturn.js';
+import supplierReturnRoutes from './routes/supplierReturn.js'; // Added this line
 import reportsRoutes from './routes/reports.js';
 import authRoutes from './routes/auth.js';
 import usersRoutes from './routes/users.js';
@@ -55,6 +56,7 @@ app.use('/api/organization', organizationRoutes);
 app.use('/api/realizations', realizationRoutes);
 app.use('/api/goods-receipt', goodsReceiptRoutes);
 app.use('/api/buyer-returns', buyerReturnRoutes);
+app.use('/api/supplier-returns', supplierReturnRoutes); // Added this line
 app.use('/api/reports', reportsRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/collection-schedule', collectionScheduleRoutes);
@@ -95,6 +97,7 @@ import { runMigration as createCollectionScheduleMigration } from './migrations/
 import { runMigration as collectionScheduleCyclicalMigration } from './migrations/011_collection_planner_cyclical.js';
 import { runMigration as addBuyerReturnsMigration } from './migrations/add_buyer_returns.js';
 import { runMigration as fixBuyerReturnCreatedByMigration } from './migrations/fix_buyerreturn_createdby.js';
+import { runMigration as createSupplierReturnsMigration } from './migrations/add_supplier_returns.js';
 import { runMigration as createDocumentLockMigration } from './migrations/100_document_lock.js';
 
 const start = async () => {
@@ -112,6 +115,7 @@ const start = async () => {
     await collectionScheduleCyclicalMigration();
     await addBuyerReturnsMigration();
     await fixBuyerReturnCreatedByMigration();
+    await createSupplierReturnsMigration();
     await createDocumentLockMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
