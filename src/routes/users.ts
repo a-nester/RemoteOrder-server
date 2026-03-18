@@ -17,7 +17,7 @@ const requireAdmin = (req: AuthRequest, res: Response, next: any) => {
 router.put('/me/preferences', userAuth, async (req: AuthRequest, res: Response) => {
     try {
         const { preferences } = req.body;
-        if (!req.user || !req.user.userId) {
+        if (!req.user || !req.user.id) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
@@ -26,7 +26,7 @@ router.put('/me/preferences', userAuth, async (req: AuthRequest, res: Response) 
         // A simple full replacement is fine if frontend sends the full object.
         const result = await pool.query(
             'UPDATE "User" SET preferences = $1 WHERE id = $2 RETURNING preferences',
-            [preferences || {}, req.user.userId]
+            [preferences || {}, req.user.id]
         );
 
         if (result.rows.length === 0) {
