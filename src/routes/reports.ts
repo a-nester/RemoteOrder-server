@@ -191,7 +191,7 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
 // GET /api/reports/sales/by-client
 router.get('/sales/by-client', async (req: Request, res: Response) => {
     try {
-        const { dateFrom, dateTo, counterparty } = req.query;
+        const { dateFrom, dateTo, counterparty, groupBySalesType } = req.query;
         let params: any[] = [];
         let filters = '';
 
@@ -217,9 +217,10 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                     "counterpartyId",
                     id,
                     amount as "netAmount",
-                    profit as "netProfit"
-                FROM "Realization"
-                WHERE status = 'POSTED' ${filters.replace(/r\./g, '')}
+                    profit as "netProfit",
+                    ${groupBySalesType === 'true' ? 'r."salesType"' : "'' as \"salesType\""}
+                FROM "Realization" r
+                WHERE r.status = 'POSTED' ${filters.replace(/r\./g, 'r.')}
                 
                 UNION ALL
                 
@@ -227,19 +228,21 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                     "counterpartyId",
                     id,
                     -"totalAmount" as "netAmount",
-                    profit as "netProfit" -- BuyerReturn profit is already saved as negative
-                FROM "BuyerReturn"
-                WHERE status = 'POSTED' ${filters.replace(/r\./g, '')}
+                    profit as "netProfit", -- BuyerReturn profit is already saved as negative
+                    '' as "salesType"
+                FROM "BuyerReturn" br
+                WHERE br.status = 'POSTED' ${filters.replace(/r\./g, 'br.')}
             )
             SELECT 
                 c.id as "clientId",
                 c.name as "clientName",
+                ${groupBySalesType === 'true' ? 'bd."salesType",' : ''}
                 COUNT(bd.id) as "documentsCount",
                 SUM(bd."netAmount") as "totalAmount",
                 SUM(bd."netProfit") as "totalProfit"
             FROM BaseDocs bd
             LEFT JOIN "Counterparty" c ON bd."counterpartyId" = c.id
-            GROUP BY c.id, c.name
+            GROUP BY c.id, c.name ${groupBySalesType === 'true' ? ', bd."salesType"' : ''}
             ORDER BY "totalAmount" DESC NULLS LAST
         `;
 
@@ -257,7 +260,7 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
 // GET /api/reports/sales/by-product
 router.get('/sales/by-product', async (req: Request, res: Response) => {
     try {
-        const { dateFrom, dateTo, counterparty } = req.query;
+        const { dateFrom, dateTo, counterparty, groupBySalesType } = req.query;
         let params: any[] = [];
         let rFilters = '';
         let brFilters = '';
@@ -293,7 +296,8 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                         SELECT SUM(rib.quantity * rib."enterPrice")
                         FROM "RealizationItemBatch" rib
                         WHERE rib."realizationItemId" = ri.id
-                    ), 0) as "netProfit"
+                    ), 0) as "netProfit",
+                    ${groupBySalesType === 'true' ? 'r."salesType"' : "'' as \"salesType\""}
                 FROM "RealizationItem" ri
                 JOIN "Realization" r ON r.id = ri."realizationId"
                 LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
@@ -312,7 +316,8 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                         JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
                         WHERE brib."buyerReturnItemId" = bri.id
                         LIMIT 1
-                    ), 0) * bri.quantity) - bri.total as "netProfit"
+                    ), 0) * bri.quantity) - bri.total as "netProfit",
+                    '' as "salesType"
                 FROM "BuyerReturnItem" bri
                 JOIN "BuyerReturn" br ON br.id = bri."buyerReturnId"
                 LEFT JOIN "Counterparty" c ON br."counterpartyId" = c.id
@@ -322,12 +327,13 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                 p.id as "productId",
                 p.name as "productName",
                 p.category as "productCategory",
+                ${groupBySalesType === 'true' ? 'bi."salesType",' : ''}
                 SUM(bi."netQty") as "totalQuantity",
                 SUM(bi."netAmount") as "totalAmount",
                 SUM(bi."netProfit") as "totalProfit"
             FROM BaseItems bi
             LEFT JOIN "Product" p ON p.id::text = bi."productId"
-            GROUP BY p.id, p.name, p.category
+            GROUP BY p.id, p.name, p.category ${groupBySalesType === 'true' ? ', bi."salesType"' : ''}
             ORDER BY "totalAmount" DESC NULLS LAST
         `;
 

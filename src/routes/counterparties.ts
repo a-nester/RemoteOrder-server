@@ -62,16 +62,16 @@ router.get('/counterparties', async (req: Request, res: Response) => {
 // POST /counterparties
 router.post('/counterparties', async (req: Request, res: Response) => {
     try {
-        const { name, address, phone, contactPerson, isBuyer, isSeller, priceTypeId, groupId, warehouseId } = req.body;
+        const { name, address, phone, contactPerson, isBuyer, isSeller, priceTypeId, groupId, warehouseId, defaultSalesType } = req.body;
 
         if (!name) return res.status(400).json({ error: 'Name is required' });
 
         const result = await pool.query(
             `INSERT INTO "Counterparty" 
-            ("name", "address", "phone", "contactPerson", "isBuyer", "isSeller", "priceTypeId", "groupId", "warehouseId") 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+            ("name", "address", "phone", "contactPerson", "isBuyer", "isSeller", "priceTypeId", "groupId", "warehouseId", "defaultSalesType") 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
             RETURNING *`,
-            [name, address, phone, contactPerson, isBuyer || false, isSeller || false, priceTypeId || null, groupId || null, warehouseId || null]
+            [name, address, phone, contactPerson, isBuyer || false, isSeller || false, priceTypeId || null, groupId || null, warehouseId || null, defaultSalesType || 'Готівковий']
         );
         res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -84,7 +84,7 @@ router.post('/counterparties', async (req: Request, res: Response) => {
 router.put('/counterparties/:id', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { name, address, phone, contactPerson, isBuyer, isSeller, priceTypeId, groupId, warehouseId } = req.body;
+        const { name, address, phone, contactPerson, isBuyer, isSeller, priceTypeId, groupId, warehouseId, defaultSalesType } = req.body;
 
         const result = await pool.query(
             `UPDATE "Counterparty" 
@@ -97,10 +97,11 @@ router.put('/counterparties/:id', async (req: Request, res: Response) => {
                 "priceTypeId" = $8, -- Allow null
                 "groupId" = $9,     -- Allow null
                 "warehouseId" = $10, -- Allow null
+                "defaultSalesType" = COALESCE($11, "defaultSalesType"),
                 "updatedAt" = NOW()
             WHERE "id" = $1 
             RETURNING *`,
-            [id, name, address, phone, contactPerson, isBuyer, isSeller, priceTypeId || null, groupId || null, warehouseId || null]
+            [id, name, address, phone, contactPerson, isBuyer, isSeller, priceTypeId || null, groupId || null, warehouseId || null, defaultSalesType]
         );
 
         if (result.rows.length === 0) {

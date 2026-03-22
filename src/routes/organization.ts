@@ -37,6 +37,11 @@ router.put('/', userAuth, async (req, res) => {
             values.push(fullDetails);
         }
 
+        if (req.body.salesTypes !== undefined) {
+            updates.push(`"salesTypes" = $${paramIndex++}`);
+            values.push(JSON.stringify(req.body.salesTypes));
+        }
+
         updates.push(`"updatedAt" = NOW()`);
 
         if (updates.length === 1) { // Only updatedAt

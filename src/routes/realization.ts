@@ -66,7 +66,7 @@ router.get('/:id', userAuth, async (req, res) => {
 
 // Create Manual Realization
 router.post('/', userAuth, async (req, res) => {
-    const { date, counterpartyId, warehouseId, amount, comment, items } = req.body;
+    const { date, counterpartyId, warehouseId, amount, comment, items, salesType } = req.body;
     const client = await pool.connect();
 
     try {
@@ -79,11 +79,11 @@ router.post('/', userAuth, async (req, res) => {
         // Insert Header
         const realizationRes = await client.query(`
             INSERT INTO "Realization" (
-                "date", "number", "counterpartyId", "warehouseId", "status", "amount", "currency", "createdBy", "comment"
+                "date", "number", "counterpartyId", "warehouseId", "status", "amount", "currency", "createdBy", "comment", "salesType"
             ) VALUES (
-               COALESCE($1, NOW()), $2, $3, $4, 'DRAFT', $5, 'UAH', $6, $7
+               COALESCE($1, NOW()), $2, $3, $4, 'DRAFT', $5, 'UAH', $6, $7, COALESCE($8, 'Готівковий')
             ) RETURNING id
-        `, [date, number, counterpartyId, warehouseId, amount, userId, comment]);
+        `, [date, number, counterpartyId, warehouseId, amount, userId, comment, salesType]);
 
         const realizationId = realizationRes.rows[0].id;
 
@@ -131,12 +131,16 @@ router.post('/from-order/:orderId', userAuth, async (req, res) => {
         const itemsRes = await client.query('SELECT * FROM "OrderItem" WHERE "orderId" = $1', [orderId]);
         const items = itemsRes.rows;
 
-        // 3. Determine Warehouse (from Counterparty or Default)
-        // Check Counterparty for default warehouse
+        // 3. Determine Warehouse and Sales Type (from Counterparty or Default)
+        // Check Counterparty for default warehouse and salesType
         let warehouseId = null;
+        let salesType = 'Готівковий';
         if (order.counterpartyId) {
-            const cpRes = await client.query('SELECT "warehouseId" FROM "Counterparty" WHERE id = $1', [order.counterpartyId]);
-            if ((cpRes.rowCount || 0) > 0) warehouseId = cpRes.rows[0].warehouseId;
+            const cpRes = await client.query('SELECT "warehouseId", "defaultSalesType" FROM "Counterparty" WHERE id = $1', [order.counterpartyId]);
+            if ((cpRes.rowCount || 0) > 0) {
+                warehouseId = cpRes.rows[0].warehouseId;
+                salesType = cpRes.rows[0].defaultSalesType || 'Готівковий';
+            }
         }
 
         // Fallback to Main Warehouse if not set
@@ -153,11 +157,11 @@ router.post('/from-order/:orderId', userAuth, async (req, res) => {
 
         const realizationRes = await client.query(`
             INSERT INTO "Realization" (
-                "date", "number", "counterpartyId", "warehouseId", "status", "amount", "currency", "createdBy", "orderId"
+                "date", "number", "counterpartyId", "warehouseId", "status", "amount", "currency", "createdBy", "orderId", "salesType"
             ) VALUES (
-               NOW(), $1, $2, $3, 'DRAFT', $4, $5, $6, $7
+               NOW(), $1, $2, $3, 'DRAFT', $4, $5, $6, $7, $8
             ) RETURNING id
-        `, [number, order.counterpartyId, warehouseId, order.total, order.currency, userId, orderId]);
+        `, [number, order.counterpartyId, warehouseId, order.total, order.currency, userId, orderId, salesType]);
 
         // Update Order Status to ACCEPTED
         await client.query(`UPDATE "Order" SET "status" = 'ACCEPTED', "updatedAt" = NOW() WHERE "id" = $1`, [orderId]);
@@ -193,7 +197,7 @@ router.post('/from-order/:orderId', userAuth, async (req, res) => {
 // Edit Realization
 router.put('/:id', userAuth, async (req, res) => {
     const { id } = req.params;
-    const { date, counterpartyId, warehouseId, amount, items, comment } = req.body;
+    const { date, counterpartyId, warehouseId, amount, items, comment, salesType } = req.body;
     const client = await pool.connect();
 
     try {
@@ -212,9 +216,10 @@ router.put('/:id', userAuth, async (req, res) => {
                 "warehouseId" = COALESCE($3, "warehouseId"),
                 "comment" = COALESCE($4, "comment"),
                 "amount" = COALESCE($5, "amount"),
+                "salesType" = COALESCE($7, "salesType"),
                 "updatedAt" = NOW()
             WHERE id = $6
-        `, [date, counterpartyId, warehouseId, comment, amount, id]);
+        `, [date, counterpartyId, warehouseId, comment, amount, id, salesType]);
 
         // If items are provided, wipe and recreate (easier than delta patching)
         if (items && Array.isArray(items)) {
