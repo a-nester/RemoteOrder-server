@@ -227,6 +227,107 @@ router.post('/transactions', userAuth, async (req, res) => {
     }
 });
 
+router.put('/transactions/:id', userAuth, async (req, res) => {
+    const { id } = req.params;
+    const { date, type, cashboxId, amount, categoryId, counterpartyId, comment } = req.body;
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // 1. Initial checks
+        const existingRes = await client.query('SELECT * FROM "CashTransaction" WHERE id = $1 AND "isDeleted" = false', [id]);
+        if (existingRes.rowCount === 0) throw new Error('Transaction not found');
+        
+        // 2. Revert previous allocations
+        const allocs = await client.query('SELECT * FROM "PaymentAllocation" WHERE "cashTransactionId" = $1', [id]);
+        for (const alloc of allocs.rows) {
+            if (alloc.documentType === 'REALIZATION') {
+                 await client.query(`UPDATE "Realization" SET "paidAmount" = "paidAmount" - $1 WHERE id = $2`, [alloc.amount, alloc.documentId]);
+            } else if (alloc.documentType === 'GOODS_RECEIPT') {
+                 await client.query(`UPDATE "GoodsReceipt" SET "paidAmount" = "paidAmount" - $1 WHERE id = $2`, [alloc.amount, alloc.documentId]);
+            }
+        }
+        await client.query('DELETE FROM "PaymentAllocation" WHERE "cashTransactionId" = $1', [id]);
+
+        // 3. Update Transaction Row
+        const tRes = await client.query(`
+            UPDATE "CashTransaction" 
+            SET "date" = COALESCE($1, NOW()), "type" = $2, "cashboxId" = $3, "amount" = $4, "categoryId" = $5, "counterpartyId" = $6, "comment" = $7, "updatedAt" = NOW()
+            WHERE id = $8
+            RETURNING *
+        `, [date, type, cashboxId, amount, categoryId, counterpartyId, comment, id]);
+        
+        const transaction = tRes.rows[0];
+        let remainingAmount = parseFloat(amount.toString());
+
+        // 4. Create new allocations (FIFO Debt Allocation)
+        if (counterpartyId && remainingAmount > 0) {
+            if (type === 'INCOME') {
+                const unpaids = await client.query(`
+                    SELECT id, amount, "paidAmount" 
+                    FROM "Realization"
+                    WHERE "counterpartyId" = $1 AND status = 'POSTED' AND "paidAmount" < amount
+                    ORDER BY "date" ASC
+                `, [counterpartyId]);
+
+                for (const doc of unpaids.rows) {
+                    if (remainingAmount <= 0) break;
+                    const docDebt = parseFloat(doc.amount) - parseFloat(doc.paidAmount);
+                    const allocate = Math.min(docDebt, remainingAmount);
+                    
+                    if (allocate > 0) {
+                        await client.query(`
+                            INSERT INTO "PaymentAllocation" ("cashTransactionId", "documentId", "documentType", "amount")
+                            VALUES ($1, $2, 'REALIZATION', $3)
+                        `, [transaction.id, doc.id, allocate]);
+                        await client.query(`
+                            UPDATE "Realization" SET "paidAmount" = "paidAmount" + $1 WHERE id = $2
+                        `, [allocate, doc.id]);
+                        remainingAmount -= allocate;
+                    }
+                }
+            } else if (type === 'OUTCOME') {
+                const unpaids = await client.query(`
+                    SELECT 
+                        id, 
+                        COALESCE((SELECT SUM(total) FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = "GoodsReceipt".id), 0) as amount, 
+                        "paidAmount" 
+                    FROM "GoodsReceipt"
+                    WHERE "providerId" = $1 AND status = 'POSTED' AND "paidAmount" < COALESCE((SELECT SUM(total) FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = "GoodsReceipt".id), 0)
+                    ORDER BY "date" ASC
+                `, [counterpartyId]);
+
+                for (const doc of unpaids.rows) {
+                    if (remainingAmount <= 0) break;
+                    const docDebt = parseFloat(doc.amount) - parseFloat(doc.paidAmount);
+                    const allocate = Math.min(docDebt, remainingAmount);
+                    
+                    if (allocate > 0) {
+                        await client.query(`
+                            INSERT INTO "PaymentAllocation" ("cashTransactionId", "documentId", "documentType", "amount")
+                            VALUES ($1, $2, 'GOODS_RECEIPT', $3)
+                        `, [transaction.id, doc.id, allocate]);
+                        await client.query(`
+                            UPDATE "GoodsReceipt" SET "paidAmount" = "paidAmount" + $1 WHERE id = $2
+                        `, [allocate, doc.id]);
+                        remainingAmount -= allocate;
+                    }
+                }
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json(transaction);
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error updating transaction:', error);
+        res.status(500).json({ message: error instanceof Error ? error.message : 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
 router.delete('/transactions/:id', userAuth, async (req, res) => {
     // Soft delete to prevent cascade breaking, or handle reverting physical allocations if needed.
     // Keeping simple soft-delete mapped to business rules.
