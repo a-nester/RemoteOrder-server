@@ -62,6 +62,14 @@ export class SupplierReturnController {
             res.json(doc);
         } catch (error: any) {
             console.error('Post SupplierReturn error:', error);
+            try {
+                const parsed = JSON.parse(error.message);
+                if (parsed.code === 'INSUFFICIENT_STOCK') {
+                    return res.status(400).json({ error: parsed });
+                }
+            } catch (e) {
+                // fallthrough
+            }
             if (error.message === 'Document already posted' || error.message === 'Document not found') {
                 return res.status(400).json({ error: error.message });
             }

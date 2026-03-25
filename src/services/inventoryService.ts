@@ -61,7 +61,14 @@ export class InventoryService {
         }
 
         if (remaining > 0) {
-            throw new Error(`Insufficient stock for product ${productId}. Needed ${quantityNeeded}, missing ${remaining}`);
+            const prodRes = await client.query('SELECT name FROM "Product" WHERE id = $1', [productId]);
+            const productName = prodRes.rows[0]?.name || productId;
+            throw new Error(JSON.stringify({
+                code: 'INSUFFICIENT_STOCK',
+                productName,
+                needed: quantityNeeded,
+                missing: remaining
+            }));
         }
 
         return deductions;

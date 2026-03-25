@@ -249,8 +249,14 @@ router.post('/:id/post', userAuth, async (req, res) => {
     try {
         const result = await RealizationService.post(req.params.id as string);
         res.json(result);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error posting realization:', error);
+        try {
+            const parsed = JSON.parse(error.message);
+            if (parsed.code === 'INSUFFICIENT_STOCK') {
+                return res.status(400).json({ error: parsed });
+            }
+        } catch(e) {}
         res.status(400).json({ message: error instanceof Error ? error.message : 'Failed to post' });
     }
 });
