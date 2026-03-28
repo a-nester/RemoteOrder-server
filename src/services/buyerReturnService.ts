@@ -142,7 +142,8 @@ export class BuyerReturnService {
                     Number(item.quantity),
                     costPrice, // Refund price historically might be diff, but we re-stock at cost price
                     undefined, // Goods receipt ID
-                    doc.date // The batch will be dated by the return doc
+                    doc.date, // The batch will be dated by the return doc
+                    id // buyerReturnId
                 );
 
                 // Record the relation mapping

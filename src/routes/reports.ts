@@ -20,7 +20,7 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
 
         let warehouseFilter = '';
         if (warehouseId) {
-            warehouseFilter = ` AND gr."warehouseId"::text = $2`;
+            warehouseFilter = ` AND COALESCE(gr."warehouseId", br."warehouseId")::text = $2`;
             params.push(warehouseId);
         }
 
@@ -29,9 +29,9 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
                 SELECT 
                     pb.id as batch_id,
                     pb."productId",
-                    gr."warehouseId",
+                    COALESCE(gr."warehouseId", br."warehouseId") as "warehouseId",
                     pb."enterPrice",
-                    CASE WHEN gr."date" < ($1::date + interval '1 day') THEN pb."quantityTotal" ELSE 0 END as incoming,
+                    CASE WHEN COALESCE(gr."date", br."date") < ($1::date + interval '1 day') THEN pb."quantityTotal" ELSE 0 END as incoming,
                     COALESCE(
                         (SELECT SUM(rib.quantity) 
                          FROM "RealizationItemBatch" rib 
@@ -41,6 +41,7 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
                         ), 0) as outgoing
                 FROM "ProductBatch" pb
                 LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
+                LEFT JOIN "BuyerReturn" br ON br.id::text = pb."buyerReturnId"::text
                 WHERE 1=1 ${warehouseFilter}
             )
             SELECT 
@@ -85,22 +86,23 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
             WITH BatchIncoming AS (
                 SELECT 
                     pb."productId",
-                    SUM(CASE WHEN gr."date" < $1::date THEN pb."quantityTotal" ELSE 0 END) as start_in,
-                    SUM(CASE WHEN gr."date" >= $1::date AND gr."date" < ($2::date + interval '1 day') THEN pb."quantityTotal" ELSE 0 END) as period_in,
+                    SUM(CASE WHEN COALESCE(gr."date", br."date") < $1::date THEN pb."quantityTotal" ELSE 0 END) as start_in,
+                    SUM(CASE WHEN COALESCE(gr."date", br."date") >= $1::date AND COALESCE(gr."date", br."date") < ($2::date + interval '1 day') THEN pb."quantityTotal" ELSE 0 END) as period_in,
                     JSON_AGG(
-                        CASE WHEN gr."date" >= $1::date AND gr."date" < ($2::date + interval '1 day') THEN
+                        CASE WHEN COALESCE(gr."date", br."date") >= $1::date AND COALESCE(gr."date", br."date") < ($2::date + interval '1 day') THEN
                             json_build_object(
-                                'id', gr.id,
-                                'type', 'GOODS_RECEIPT',
-                                'docNumber', gr."docNumber",
-                                'date', gr."date",
+                                'id', COALESCE(gr.id, br.id),
+                                'type', CASE WHEN gr.id IS NOT NULL THEN 'GOODS_RECEIPT' ELSE 'BUYER_RETURN' END,
+                                'docNumber', COALESCE(gr."docNumber", br."number"),
+                                'date', COALESCE(gr."date", br."date"),
                                 'quantity', pb."quantityTotal"
                             )
                         ELSE NULL END
-                    ) FILTER (WHERE gr."date" >= $1::date AND gr."date" < ($2::date + interval '1 day')) as incoming_docs
+                    ) FILTER (WHERE COALESCE(gr."date", br."date") >= $1::date AND COALESCE(gr."date", br."date") < ($2::date + interval '1 day')) as incoming_docs
                 FROM "ProductBatch" pb
-                JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
-                WHERE gr."warehouseId"::text = $3
+                LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
+                LEFT JOIN "BuyerReturn" br ON br.id::text = pb."buyerReturnId"::text
+                WHERE COALESCE(gr."warehouseId", br."warehouseId")::text = $3
                 GROUP BY pb."productId"
             ),
             BatchOutgoing AS (
@@ -121,10 +123,11 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
                     ) FILTER (WHERE r."date" >= $1::date AND r."date" < ($2::date + interval '1 day')) as outgoing_docs
                 FROM "RealizationItemBatch" rib
                 JOIN "ProductBatch" pb ON pb.id::text = rib."productBatchId"::text
-                JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
+                LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
+                LEFT JOIN "BuyerReturn" br ON br.id::text = pb."buyerReturnId"::text
                 JOIN "RealizationItem" ri ON ri.id = rib."realizationItemId"
                 JOIN "Realization" r ON r.id = ri."realizationId"
-                WHERE gr."warehouseId"::text = $3
+                WHERE COALESCE(gr."warehouseId", br."warehouseId")::text = $3
                 GROUP BY pb."productId"
             )
             SELECT 

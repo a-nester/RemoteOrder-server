@@ -7,12 +7,12 @@ export class InventoryService {
     /**
      * Add new stock batch
      */
-    static async addStock(client: any, productId: string, quantity: number, enterPrice: number, goodsReceiptId?: string, targetDate?: Date) {
+    static async addStock(client: any, productId: string, quantity: number, enterPrice: number, goodsReceiptId?: string, targetDate?: Date, buyerReturnId?: string) {
         const result = await client.query(
-            `INSERT INTO "ProductBatch" ("productId", "quantityTotal", "quantityLeft", "enterPrice", "goodsReceiptId", "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+            `INSERT INTO "ProductBatch" ("productId", "quantityTotal", "quantityLeft", "enterPrice", "goodsReceiptId", "buyerReturnId", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
        RETURNING *`,
-            [productId, quantity, quantity, enterPrice, goodsReceiptId || null, targetDate || new Date()]
+            [productId, quantity, quantity, enterPrice, goodsReceiptId || null, buyerReturnId || null, targetDate || new Date()]
         );
         return result.rows[0];
     }
@@ -25,10 +25,11 @@ export class InventoryService {
         // 1. Get available batches ordered by createdAt ASC, filtered by warehouse
         const batchesResult = await client.query(
             `SELECT pb.* FROM "ProductBatch" pb
-             JOIN "GoodsReceipt" gr ON pb."goodsReceiptId" = gr.id
+             LEFT JOIN "GoodsReceipt" gr ON pb."goodsReceiptId" = gr.id
+             LEFT JOIN "BuyerReturn" br ON pb."buyerReturnId" = br.id
              WHERE pb."productId" = $1 
                AND pb."quantityLeft" > 0 
-               AND gr."warehouseId" = $2
+               AND COALESCE(gr."warehouseId", br."warehouseId") = $2
              ORDER BY pb."createdAt" ASC 
              FOR UPDATE`, // Lock rows to prevent race conditions
             [productId, warehouseId]

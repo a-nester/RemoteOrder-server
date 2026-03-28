@@ -4,16 +4,42 @@ import { userAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Get Organization Details
+// Get Default/First Organization Details
 router.get('/', userAuth, async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM "Organization" LIMIT 1');
+        const result = await pool.query('SELECT * FROM "Organization" ORDER BY "createdAt" ASC LIMIT 1');
         if (result.rows.length === 0) {
             return res.status(404).json({ message: 'Organization not found' });
         }
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Error fetching organization:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Get All Organizations
+router.get('/all', userAuth, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM "Organization" ORDER BY "name" ASC');
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching all organizations:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Create Organization
+router.post('/', userAuth, async (req, res) => {
+    const { name, fullDetails, salesTypes } = req.body;
+    try {
+        const result = await pool.query(
+            'INSERT INTO "Organization" (name, "fullDetails", "salesTypes", "createdAt", "updatedAt") VALUES ($1, $2, $3, NOW(), NOW()) RETURNING *',
+            [name || 'Нова Організація', fullDetails || null, salesTypes ? JSON.stringify(salesTypes) : JSON.stringify(["Готівковий", "р/р ФОП", "з ПДВ"])]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        console.error('Error creating organization:', error);
         res.status(500).json({ message: 'Server error' });
     }
 });

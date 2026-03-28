@@ -38,10 +38,11 @@ router.get('/:id', userAuth, async (req, res) => {
     const { id } = req.params;
     try {
         const realization = await pool.query(`
-            SELECT r.*, c.name as "counterpartyName", w.name as "warehouseName"
+            SELECT r.*, c.name as "counterpartyName", w.name as "warehouseName", o.name as "organizationName"
             FROM "Realization" r
             LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
             LEFT JOIN "Warehouse" w ON r."warehouseId" = w.id
+            LEFT JOIN "Organization" o ON c."organizationId" = o.id
             WHERE r.id = $1
         `, [id]);
 
