@@ -527,7 +527,7 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
                     r.id as "documentId",
                     r.date,
                     'SUPPLIER_RETURN' as "type",
-                    r."docNumber",
+                    r.number as "docNumber",
                     r."totalAmount" as "balanceChange",
                     r."totalAmount" as "debit",
                     0 as "credit",
