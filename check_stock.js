@@ -1,23 +1,25 @@
 import pg from 'pg';
 import dotenv from 'dotenv';
-dotenv.config();
+import path from 'path';
 
-const url = new URL(process.env.DATABASE_URL);
-url.searchParams.set('sslmode', 'require');
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL + '?sslmode=require' });
 
-const pool = new pg.Pool({ connectionString: url.toString() });
+async function run() {
+    const client = await pool.connect();
+    try {
+        const pRes = await client.query(`SELECT id, name FROM "Product" WHERE name ILIKE '%Преміум 82,5% ТМ "МілКрай" 5 кг%'`);
+        const p = pRes.rows[0];
+        
+        const sumRes = await client.query(`SELECT SUM("quantityLeft") as total FROM "ProductBatch" WHERE "productId" = $1`, [p.id]);
+        
+        console.log(`Current Total Stock for ${p.name}: ${sumRes.rows[0].total}`);
 
-(async () => {
-  try {
-    const pRes = await pool.query('SELECT id, name FROM "Product" WHERE name ILIKE \'%Сметана 20%5 кг%\' OR name ILIKE \'%Вершкова Лінія%\'');
-    console.log('PRODUCTS:', pRes.rows);
-    for (const p of pRes.rows) {
-       const bRes = await pool.query('SELECT id, "quantityTotal", "quantityLeft", "createdAt"::date FROM "ProductBatch" WHERE "productId" = $1 ORDER BY "createdAt" ASC', [p.id]);
-       console.log('BATCHES FOR', p.name, ':', bRes.rows);
+        client.release();
+        process.exit(0);
+    } catch(e) {
+        console.error(e);
+        process.exit(1);
     }
-  } catch (e) {
-    console.error(e);
-  } finally {
-    process.exit(0);
-  }
-})();
+}
+run();
