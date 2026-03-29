@@ -38,6 +38,13 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
                          JOIN "RealizationItem" ri ON ri.id = rib."realizationItemId"
                          JOIN "Realization" r ON r.id = ri."realizationId"
                          WHERE rib."productBatchId"::text = pb.id::text AND r."date" < ($1::date + interval '1 day')
+                        ), 0) +
+                    COALESCE(
+                        (SELECT SUM(srib.quantity) 
+                         FROM "SupplierReturnItemBatch" srib
+                         JOIN "SupplierReturnItem" sri ON sri.id = srib."supplierReturnItemId"
+                         JOIN "SupplierReturn" sr ON sr.id = sri."supplierReturnId"
+                         WHERE srib."productBatchId"::text = pb.id::text AND sr."date" < ($1::date + interval '1 day')
                         ), 0) as outgoing
                 FROM "ProductBatch" pb
                 LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
@@ -105,22 +112,14 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
                 WHERE COALESCE(gr."warehouseId", br."warehouseId")::text = $3
                 GROUP BY pb."productId"
             ),
-            BatchOutgoing AS (
-                SELECT 
+            OutgoingEvents AS (
+                SELECT
                     pb."productId",
-                    SUM(CASE WHEN r."date" < $1::date THEN rib.quantity ELSE 0 END) as start_out,
-                    SUM(CASE WHEN r."date" >= $1::date AND r."date" < ($2::date + interval '1 day') THEN rib.quantity ELSE 0 END) as period_out,
-                    JSON_AGG(
-                        CASE WHEN r."date" >= $1::date AND r."date" < ($2::date + interval '1 day') THEN
-                            json_build_object(
-                                'id', r.id,
-                                'type', 'REALIZATION',
-                                'docNumber', r.number,
-                                'date', r."date",
-                                'quantity', rib.quantity
-                            )
-                        ELSE NULL END
-                    ) FILTER (WHERE r."date" >= $1::date AND r."date" < ($2::date + interval '1 day')) as outgoing_docs
+                    r."date" as event_date,
+                    rib.quantity,
+                    r.id as doc_id,
+                    'REALIZATION' as doc_type,
+                    r.number as doc_number
                 FROM "RealizationItemBatch" rib
                 JOIN "ProductBatch" pb ON pb.id::text = rib."productBatchId"::text
                 LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
@@ -128,7 +127,42 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
                 JOIN "RealizationItem" ri ON ri.id = rib."realizationItemId"
                 JOIN "Realization" r ON r.id = ri."realizationId"
                 WHERE COALESCE(gr."warehouseId", br."warehouseId")::text = $3
-                GROUP BY pb."productId"
+                
+                UNION ALL
+                
+                SELECT
+                    pb."productId",
+                    sr."date" as event_date,
+                    srib.quantity,
+                    sr.id as doc_id,
+                    'SUPPLIER_RETURN' as doc_type,
+                    sr."number" as doc_number
+                FROM "SupplierReturnItemBatch" srib
+                JOIN "ProductBatch" pb ON pb.id::text = srib."productBatchId"::text
+                LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
+                LEFT JOIN "BuyerReturn" br ON br.id::text = pb."buyerReturnId"::text
+                JOIN "SupplierReturnItem" sri ON sri.id = srib."supplierReturnItemId"
+                JOIN "SupplierReturn" sr ON sr.id = sri."supplierReturnId"
+                WHERE COALESCE(gr."warehouseId", br."warehouseId")::text = $3
+            ),
+            BatchOutgoing AS (
+                SELECT 
+                    "productId",
+                    SUM(CASE WHEN event_date < $1::date THEN quantity ELSE 0 END) as start_out,
+                    SUM(CASE WHEN event_date >= $1::date AND event_date < ($2::date + interval '1 day') THEN quantity ELSE 0 END) as period_out,
+                    JSON_AGG(
+                        CASE WHEN event_date >= $1::date AND event_date < ($2::date + interval '1 day') THEN
+                            json_build_object(
+                                'id', doc_id,
+                                'type', doc_type,
+                                'docNumber', doc_number,
+                                'date', event_date,
+                                'quantity', quantity
+                            )
+                        ELSE NULL END
+                    ) FILTER (WHERE event_date >= $1::date AND event_date < ($2::date + interval '1 day')) as outgoing_docs
+                FROM OutgoingEvents
+                GROUP BY "productId"
             )
             SELECT 
                 p.id as "productId",
@@ -417,7 +451,8 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
                     COALESCE(SUM(CASE WHEN r.type = 'REALIZATION' THEN r.amount ELSE 0 END), 0) +
                     COALESCE(SUM(CASE WHEN r.type = 'OUTCOME' THEN r.amount ELSE 0 END), 0) -
                     COALESCE(SUM(CASE WHEN r.type = 'BUYER_RETURN' THEN r.amount ELSE 0 END), 0) -
-                    COALESCE(SUM(CASE WHEN r.type = 'GOODS_RECEIPT' THEN r.amount ELSE 0 END), 0) -
+                    COALESCE(SUM(CASE WHEN r.type = 'GOODS_RECEIPT' THEN r.amount ELSE 0 END), 0) +
+                    COALESCE(SUM(CASE WHEN r.type = 'SUPPLIER_RETURN' THEN r.amount ELSE 0 END), 0) -
                     COALESCE(SUM(CASE WHEN r.type = 'INCOME' THEN r.amount ELSE 0 END), 0) as "startBal"
                 FROM (
                     SELECT amount, 'REALIZATION' as type, date, "counterpartyId" FROM "Realization" WHERE status = 'POSTED'
@@ -425,6 +460,8 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
                     SELECT "totalAmount" as amount, 'BUYER_RETURN' as type, date, "counterpartyId" FROM "BuyerReturn" WHERE status = 'POSTED'
                     UNION ALL
                     SELECT (SELECT COALESCE(SUM(total), 0) FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = "GoodsReceipt".id) as amount, 'GOODS_RECEIPT' as type, date, "providerId" as "counterpartyId" FROM "GoodsReceipt" WHERE status = 'POSTED'
+                    UNION ALL
+                    SELECT "totalAmount" as amount, 'SUPPLIER_RETURN' as type, date, "supplierId" as "counterpartyId" FROM "SupplierReturn" WHERE status = 'POSTED'
                     UNION ALL
                     SELECT amount, type, date, "counterpartyId" FROM "CashTransaction" WHERE "isDeleted" = FALSE
                 ) r
@@ -483,6 +520,21 @@ router.get('/reconciliation', async (req: Request, res: Response) => {
                     r."providerId" as "counterpartyId"
                 FROM "GoodsReceipt" r
                 WHERE r.status = 'POSTED' ${clientIdsFilter.replace('"counterpartyId"', '"providerId"')} ${dateFilter}
+
+                UNION ALL
+
+                SELECT 
+                    r.id as "documentId",
+                    r.date,
+                    'SUPPLIER_RETURN' as "type",
+                    r."docNumber",
+                    r."totalAmount" as "balanceChange",
+                    r."totalAmount" as "debit",
+                    0 as "credit",
+                    r.comment,
+                    r."supplierId" as "counterpartyId"
+                FROM "SupplierReturn" r
+                WHERE r.status = 'POSTED' ${clientIdsFilter.replace('"counterpartyId"', '"supplierId"')} ${dateFilter}
 
                 UNION ALL
 
