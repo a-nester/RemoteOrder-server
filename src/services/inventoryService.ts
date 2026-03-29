@@ -31,7 +31,7 @@ export class InventoryService {
                AND pb."quantityLeft" > 0 
                AND COALESCE(gr."warehouseId", br."warehouseId") = $2
              ORDER BY pb."createdAt" ASC 
-             FOR UPDATE`, // Lock rows to prevent race conditions
+             FOR UPDATE OF pb`, // Lock only ProductBatch rows
             [productId, warehouseId]
         );
 
