@@ -216,4 +216,30 @@ export class GoodsReceiptService {
         const result = await pool.query(query, params);
         return result.rows;
     }
+
+    // Delete
+    static async delete(id: string) {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            
+            const docRes = await client.query('SELECT status FROM "GoodsReceipt" WHERE id = $1 FOR UPDATE', [id]);
+            if (docRes.rows.length === 0) throw new Error('Document not found');
+            
+            if (docRes.rows[0].status === 'POSTED') {
+                throw new Error('Cannot delete a POSTED document');
+            }
+
+            await client.query('DELETE FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = $1', [id]);
+            await client.query('DELETE FROM "GoodsReceipt" WHERE id = $1', [id]);
+            
+            await client.query('COMMIT');
+            return { success: true };
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
 }

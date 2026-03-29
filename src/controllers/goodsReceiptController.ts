@@ -82,4 +82,18 @@ export class GoodsReceiptController {
             res.status(500).json({ error: 'Failed to unpost document' });
         }
     }
+
+    // DELETE /api/goods-receipt/:id
+    static async delete(req: any, res: any) {
+        try {
+            const doc = await GoodsReceiptService.delete(req.params.id);
+            res.json(doc);
+        } catch (error: any) {
+            console.error('Delete GoodsReceipt error:', error);
+            if (error.message === 'Cannot delete a POSTED document') {
+                return res.status(400).json({ error: error.message });
+            }
+            res.status(500).json({ error: 'Failed to delete' });
+        }
+    }
 }
