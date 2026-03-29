@@ -187,15 +187,17 @@ export class BuyerReturnService {
 
             await client.query('BEGIN');
 
-            // Find all batches created by this return
+            // Removing batches outright (safely using the exact buyerReturnId mapping we added)
+            await client.query(`DELETE FROM "ProductBatch" WHERE "buyerReturnId" = $1`, [id]);
+
+            // Fallback: Delete any lingering batches created before the migration 
+            // by using the old BuyerReturnItemBatch linkage
             const itemBatchesRes = await client.query(`
                 SELECT brib."productBatchId"
                 FROM "BuyerReturnItemBatch" brib
                 JOIN "BuyerReturnItem" bri ON bri.id = brib."buyerReturnItemId"
                 WHERE bri."buyerReturnId" = $1
             `, [id]);
-
-            // Removing batches outright
             for (const row of itemBatchesRes.rows) {
                 await client.query(`DELETE FROM "ProductBatch" WHERE id = $1`, [row.productBatchId]);
             }

@@ -222,6 +222,15 @@ import { PriceController } from '../controllers/priceController.js';
 router.post('/inventory/arrival', InventoryController.addArrival);
 router.get('/inventory/stock/:productId', InventoryController.getStock);
 
+router.get('/test/productbatch', async (req: Request, res: Response) => {
+    try {
+        const result = await pool.query('SELECT * FROM "ProductBatch" ORDER BY "createdAt" DESC LIMIT 10');
+        res.json(result.rows);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // 💰 Price Management
 router.post('/prices/set', PriceController.setPrice);
 router.get('/prices/history/:productId', PriceController.getHistory);

@@ -99,6 +99,7 @@ import { runMigration as addBuyerReturnsMigration } from './migrations/add_buyer
 import { runMigration as fixBuyerReturnCreatedByMigration } from './migrations/fix_buyerreturn_createdby.js';
 import { runMigration as createSupplierReturnsMigration } from './migrations/add_supplier_returns.js';
 import { runMigration as createDocumentLockMigration } from './migrations/100_document_lock.js';
+import { runMigration as backfillBuyerReturnBatchMigration } from './migrations/15_backfill_buyer_return_batch.js';
 
 const start = async () => {
   try {
@@ -117,6 +118,7 @@ const start = async () => {
     await fixBuyerReturnCreatedByMigration();
     await createSupplierReturnsMigration();
     await createDocumentLockMigration();
+    await backfillBuyerReturnBatchMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
