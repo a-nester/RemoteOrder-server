@@ -262,10 +262,10 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
         const query = `
             WITH BaseDocs AS (
                 SELECT 
-                    "counterpartyId",
-                    id,
-                    amount as "netAmount",
-                    profit as "netProfit",
+                    r."counterpartyId",
+                    r.id,
+                    r.amount as "netAmount",
+                    r.profit as "netProfit",
                     ${groupBySalesType === 'true' ? 'r."salesType"' : "'' as \"salesType\""}
                 FROM "Realization" r
                 LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
@@ -274,10 +274,10 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                 UNION ALL
                 
                 SELECT 
-                    "counterpartyId",
-                    id,
-                    -"totalAmount" as "netAmount",
-                    profit as "netProfit", -- BuyerReturn profit is already saved as negative
+                    br."counterpartyId",
+                    br.id,
+                    -br."totalAmount" as "netAmount",
+                    br.profit as "netProfit", -- BuyerReturn profit is already saved as negative
                     '' as "salesType"
                 FROM "BuyerReturn" br
                 LEFT JOIN "Counterparty" c ON br."counterpartyId" = c.id
