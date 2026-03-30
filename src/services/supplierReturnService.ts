@@ -114,13 +114,13 @@ export class SupplierReturnService {
     static async post(id: string) {
         const client = await pool.connect();
         try {
+            await client.query('BEGIN');
+            
             const docRes = await client.query(`SELECT * FROM "SupplierReturn" WHERE id = $1 FOR UPDATE`, [id]);
             if (docRes.rows.length === 0) throw new Error('Document not found');
             const doc = docRes.rows[0];
 
             if (doc.status === 'POSTED') throw new Error('Document already posted');
-
-            await client.query('BEGIN');
 
             const itemsRes = await client.query(`SELECT * FROM "SupplierReturnItem" WHERE "supplierReturnId" = $1 ORDER BY "sortOrder" ASC`, [id]);
             const items = itemsRes.rows;
