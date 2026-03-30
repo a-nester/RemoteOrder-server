@@ -126,10 +126,6 @@ export class SupplierReturnService {
             const items = itemsRes.rows;
 
             for (const item of items) {
-                // Логування залишків ДО списання
-                const stockBefore = await client.query('SELECT SUM("quantityLeft") as q FROM "ProductBatch" WHERE "productId" = $1', [item.productId]);
-                console.log(`[SupplierReturnService] ДО списання товару ${item.productId}. Потрібно списати: ${item.quantity}. Поточний загальний залишок: ${stockBefore.rows[0].q || 0}`);
-
                 // Deduct stock using FIFO logic, returns an array of deducted batches
                 const deductions = await InventoryService.deductStock(
                     client,
@@ -146,10 +142,6 @@ export class SupplierReturnService {
                         [item.id, deduction.batchId, deduction.quantity, deduction.enterPrice]
                     );
                 }
-
-                // Логування залишків ПІСЛЯ списання
-                const stockAfter = await client.query('SELECT SUM("quantityLeft") as q FROM "ProductBatch" WHERE "productId" = $1', [item.productId]);
-                console.log(`[SupplierReturnService] ПІСЛЯ списання товару ${item.productId}. Поточний загальний залишок: ${stockAfter.rows[0].q || 0}`);
             }
 
             // Update Status

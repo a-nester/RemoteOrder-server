@@ -58,9 +58,7 @@ export class SupplierReturnController {
     // POST /api/supplier-returns/:id/post
     static async post(req: any, res: any) {
         try {
-            console.log(`[SupplierReturnController] Отримано запит на ПРОВЕДЕННЯ документа: ${req.params.id}`);
             const doc = await SupplierReturnService.post(req.params.id);
-            console.log(`[SupplierReturnController] Документ УСПІШНО проведено: ${req.params.id}`);
             res.json(doc);
         } catch (error: any) {
             console.error('Post SupplierReturn error:', error);
