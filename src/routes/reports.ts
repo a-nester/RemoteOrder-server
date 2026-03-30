@@ -228,24 +228,35 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
 // GET /api/reports/sales/by-client
 router.get('/sales/by-client', async (req: Request, res: Response) => {
     try {
-        const { dateFrom, dateTo, counterparty, groupBySalesType } = req.query;
+        const { dateFrom, dateTo, counterparty, groupBySalesType, salesType } = req.query;
         let params: any[] = [];
-        let filters = '';
+        let rFilters = '';
+        let brFilters = '';
 
         if (dateFrom && dateTo) {
-            filters += ` AND r.date >= $${params.length + 1}::date AND r.date < ($${params.length + 2}::date + interval '1 day')`;
+            rFilters += ` AND r.date >= $${params.length + 1}::date AND r.date < ($${params.length + 2}::date + interval '1 day')`;
+            brFilters += ` AND br.date >= $${params.length + 1}::date AND br.date < ($${params.length + 2}::date + interval '1 day')`;
             params.push(dateFrom, dateTo);
         } else if (dateFrom) {
-            filters += ` AND r.date >= $${params.length + 1}::date`;
+            rFilters += ` AND r.date >= $${params.length + 1}::date`;
+            brFilters += ` AND br.date >= $${params.length + 1}::date`;
             params.push(dateFrom);
         } else if (dateTo) {
-            filters += ` AND r.date < ($${params.length + 1}::date + interval '1 day')`;
+            rFilters += ` AND r.date < ($${params.length + 1}::date + interval '1 day')`;
+            brFilters += ` AND br.date < ($${params.length + 1}::date + interval '1 day')`;
             params.push(dateTo);
         }
 
         if (counterparty) {
-            filters += ` AND c.name ILIKE $${params.length + 1}`;
+            rFilters += ` AND c.name ILIKE $${params.length + 1}`;
+            brFilters += ` AND c.name ILIKE $${params.length + 1}`;
             params.push(`%${counterparty}%`);
+        }
+
+        if (salesType) {
+            rFilters += ` AND r."salesType" = $${params.length + 1}`;
+            brFilters += ` AND FALSE`; // Exclude returns if specific salesType is requested
+            params.push(salesType);
         }
 
         const query = `
@@ -257,7 +268,8 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                     profit as "netProfit",
                     ${groupBySalesType === 'true' ? 'r."salesType"' : "'' as \"salesType\""}
                 FROM "Realization" r
-                WHERE r.status = 'POSTED' ${filters.replace(/r\./g, 'r.')}
+                LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
+                WHERE r.status = 'POSTED' ${rFilters}
                 
                 UNION ALL
                 
@@ -268,7 +280,8 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                     profit as "netProfit", -- BuyerReturn profit is already saved as negative
                     '' as "salesType"
                 FROM "BuyerReturn" br
-                WHERE br.status = 'POSTED' ${filters.replace(/r\./g, 'br.')}
+                LEFT JOIN "Counterparty" c ON br."counterpartyId" = c.id
+                WHERE br.status = 'POSTED' ${brFilters}
             )
             SELECT 
                 c.id as "clientId",
@@ -297,7 +310,7 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
 // GET /api/reports/sales/by-product
 router.get('/sales/by-product', async (req: Request, res: Response) => {
     try {
-        const { dateFrom, dateTo, counterparty, groupBySalesType } = req.query;
+        const { dateFrom, dateTo, counterparty, groupBySalesType, salesType } = req.query;
         let params: any[] = [];
         let rFilters = '';
         let brFilters = '';
@@ -320,6 +333,12 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
             rFilters += ` AND c.name ILIKE $${params.length + 1}`;
             brFilters += ` AND c.name ILIKE $${params.length + 1}`;
             params.push(`%${counterparty}%`);
+        }
+
+        if (salesType) {
+            rFilters += ` AND r."salesType" = $${params.length + 1}`;
+            brFilters += ` AND FALSE`; // Exclude returns if specific salesType is requested
+            params.push(salesType);
         }
 
         const query = `
