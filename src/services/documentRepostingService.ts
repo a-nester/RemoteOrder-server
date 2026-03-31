@@ -9,7 +9,9 @@ export const repostingEvents = new EventEmitter();
 
 interface RepostOptions {
     startDate?: string;
+    endDate?: string;
     types?: string[];
+    action?: 'REPOST' | 'POST' | 'UNPOST';
 }
 
 export class DocumentRepostingService {
@@ -30,18 +32,42 @@ export class DocumentRepostingService {
             // 2. Start Global Transaction
             await client.query('BEGIN');
 
-            this.emitLog('Starting Document Reposting process...');
+            const action = options?.action || 'REPOST';
+            
+            this.emitLog(`Starting Document Reposting process. Action: ${action} ...`);
             if (options?.startDate) this.emitLog(`Filter: From date ${options.startDate}`);
-            if (options?.types) this.emitLog(`Filter: Types [${options.types.join(', ')}]`);
+            if (options?.endDate) this.emitLog(`Filter: To date ${options.endDate}`);
+            if (options?.types && options.types.length > 0) this.emitLog(`Filter: Types [${options.types.join(', ')}]`);
             this.emitLog('System locked for maintenance. Global transaction started.');
 
-            const dateQuery = options?.startDate ? ` AND date >= $2` : "";
-            const paramsPosted = options?.startDate ? ['POSTED', options.startDate] : ['POSTED'];
-            const paramsApplied = options?.startDate ? ['APPLIED', options.startDate] : ['APPLIED'];
+            let dateQuery = '';
+            let paramsPosted: any[] = [];
+            let paramsApplied: any[] = [];
+            
+            // Determine status filters based on action
+            if (action === 'POST') {
+                paramsPosted.push('DRAFT');    // Will be overridden for GoodsReceipt which uses SAVED
+                paramsApplied.push('DRAFT');   // PriceDocs use DRAFT when unposted
+            } else {
+                paramsPosted.push('POSTED');
+                paramsApplied.push('APPLIED');
+            }
+
+            let pIdx = 2; // Index 1 is status
+            if (options?.startDate) {
+                dateQuery += ` AND date >= $${pIdx++}`;
+                paramsPosted.push(options.startDate);
+                paramsApplied.push(options.startDate);
+            }
+            if (options?.endDate) {
+                dateQuery += ` AND date <= $${pIdx++}`;
+                paramsPosted.push(`${options.endDate} 23:59:59`);
+                paramsApplied.push(`${options.endDate} 23:59:59`);
+            }
 
             const includeType = (type: string) => !options?.types || options.types.length === 0 || options.types.includes(type);
 
-            // Fetch all POSTED/APPLIED documents based on filters
+            // Fetch documents based on filters
             let realizations: { rowCount: number | null, rows: any[] } = { rowCount: 0, rows: [] };
             if (includeType('REALIZATION')) {
                 realizations = await client.query(`SELECT id, date, "createdAt" as created_at FROM "Realization" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, paramsPosted);
@@ -54,7 +80,9 @@ export class DocumentRepostingService {
 
             let goodsReceipts: { rowCount: number | null, rows: any[] } = { rowCount: 0, rows: [] };
             if (includeType('GOODS_RECEIPT')) {
-                goodsReceipts = await client.query(`SELECT id, date, "createdAt" as created_at FROM "GoodsReceipt" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, paramsPosted);
+                let grParams = [...paramsPosted];
+                if (action === 'POST') grParams[0] = 'SAVED'; // GoodsReceipt uses SAVED for unposted
+                goodsReceipts = await client.query(`SELECT id, date, "createdAt" as created_at FROM "GoodsReceipt" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, grParams);
             }
 
             let priceDocs: { rowCount: number | null, rows: any[] } = { rowCount: 0, rows: [] };
@@ -63,6 +91,7 @@ export class DocumentRepostingService {
             }
 
             // 1. UNPOST sequence (Reverse Chronological)
+            if (action === 'REPOST' || action === 'UNPOST') {
             this.emitLog(`Phase 1: Unposting ${realizations.rowCount} Realizations...`);
             for (const row of realizations.rows) {
                 await RealizationService.unpost(row.id, client);
@@ -87,9 +116,10 @@ export class DocumentRepostingService {
                 await client.query(`UPDATE "PriceDocument" SET status = 'DRAFT' WHERE id = $1`, [row.id]);
                 this.emitLog(`Reset Price Document: ${row.id}`);
             }
+            }
 
-            // Evaluate current state (all unposted!)
             // 2. POST sequence
+            if (action === 'REPOST' || action === 'POST') {
             // Combine all to post in chronological order
             let toPost = [
                 ...realizations.rows.map(r => ({ ...r, type: 'REALIZATION' })),
@@ -146,6 +176,7 @@ export class DocumentRepostingService {
                     this.emitLog(`Error posting ${doc.type} ${doc.id}: ${errorMessage}`);
                     throw new Error(errorMessage);
                 }
+            }
             }
 
             await client.query('COMMIT');
