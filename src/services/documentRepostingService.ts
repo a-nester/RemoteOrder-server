@@ -90,32 +90,68 @@ export class DocumentRepostingService {
                 priceDocs = await client.query(`SELECT id, date, '' as number, "createdAt" as created_at FROM "PriceDocument" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, paramsApplied);
             }
 
-            // 1. UNPOST sequence (Reverse Chronological)
+            // Helper to get formatted document name
+            const formatDoc = (type: string, row: any) => {
+                const docTypeMap: any = {
+                    REALIZATION: 'Реалізація',
+                    BUYER_RETURN: 'Повернення покупця',
+                    GOODS_RECEIPT: 'Прибуткова накладна',
+                    PRICE_DOCUMENT: 'Встановлення цін'
+                };
+                const docName = docTypeMap[type] || type;
+                const docDateStr = row.date ? new Date(row.date).toLocaleDateString('uk-UA') : '';
+                return `${docName} ${row.number ? `№${row.number}` : ''} від ${docDateStr}`.trim();
+            };
+
             if (action === 'REPOST' || action === 'UNPOST') {
-            this.emitLog(`Phase 1: Unposting ${realizations.rowCount} Realizations...`);
-            for (const row of realizations.rows) {
-                await RealizationService.unpost(row.id, client);
-                this.emitLog(`Unposted Realization: ${row.id}`);
-            }
+                this.emitLog(`Phase 1: Розпроведення ${realizations.rowCount} Реалізацій...`);
+                for (const row of realizations.rows) {
+                    try {
+                        await RealizationService.unpost(row.id, client);
+                        this.emitLog(`Розпроведено: ${formatDoc('REALIZATION', row)}`);
+                    } catch (err: any) {
+                        const msg = `Помилка розпроведення ${formatDoc('REALIZATION', row)}: ${err.message}`;
+                        this.emitLog(msg);
+                        throw new Error(msg);
+                    }
+                }
 
-            this.emitLog(`Phase 1: Unposting ${buyerReturns.rowCount} Buyer Returns...`);
-            for (const row of buyerReturns.rows) {
-                await BuyerReturnService.unpost(row.id, client);
-                this.emitLog(`Unposted Buyer Return: ${row.id}`);
-            }
+                this.emitLog(`Phase 1: Розпроведення ${buyerReturns.rowCount} Повернень покупця...`);
+                for (const row of buyerReturns.rows) {
+                    try {
+                        await BuyerReturnService.unpost(row.id, client);
+                        this.emitLog(`Розпроведено: ${formatDoc('BUYER_RETURN', row)}`);
+                    } catch (err: any) {
+                        const msg = `Помилка розпроведення ${formatDoc('BUYER_RETURN', row)}: ${err.message}`;
+                        this.emitLog(msg);
+                        throw new Error(msg);
+                    }
+                }
 
-            this.emitLog(`Phase 1: Unposting ${goodsReceipts.rowCount} Goods Receipts...`);
-            for (const row of goodsReceipts.rows) {
-                await GoodsReceiptService.unpost(row.id, client);
-                this.emitLog(`Unposted Goods Receipt: ${row.id}`);
-            }
+                this.emitLog(`Phase 1: Розпроведення ${goodsReceipts.rowCount} Прибуткових накладних...`);
+                for (const row of goodsReceipts.rows) {
+                    try {
+                        await GoodsReceiptService.unpost(row.id, client);
+                        this.emitLog(`Розпроведено: ${formatDoc('GOODS_RECEIPT', row)}`);
+                    } catch (err: any) {
+                        const msg = `Помилка розпроведення ${formatDoc('GOODS_RECEIPT', row)}: ${err.message}`;
+                        this.emitLog(msg);
+                        throw new Error(msg);
+                    }
+                }
 
-            this.emitLog(`Phase 1: Resetting ${priceDocs.rowCount} Price Documents...`);
-            for (const row of priceDocs.rows) {
-                await client.query(`DELETE FROM "PriceJournal" WHERE "reason" = 'Price Document Applied' AND "createdAt" = $1`, [row.created_at]);
-                await client.query(`UPDATE "PriceDocument" SET status = 'DRAFT' WHERE id = $1`, [row.id]);
-                this.emitLog(`Reset Price Document: ${row.id}`);
-            }
+                this.emitLog(`Phase 1: Скидання ${priceDocs.rowCount} Встановлень цін...`);
+                for (const row of priceDocs.rows) {
+                    try {
+                        await client.query(`DELETE FROM "PriceJournal" WHERE "reason" = 'Price Document Applied' AND "createdAt" = $1`, [row.created_at]);
+                        await client.query(`UPDATE "PriceDocument" SET status = 'DRAFT' WHERE id = $1`, [row.id]);
+                        this.emitLog(`Скинуто: ${formatDoc('PRICE_DOCUMENT', row)}`);
+                    } catch (err: any) {
+                        const msg = `Помилка скидання ${formatDoc('PRICE_DOCUMENT', row)}: ${err.message}`;
+                        this.emitLog(msg);
+                        throw new Error(msg);
+                    }
+                }
             }
 
             // 2. POST sequence
@@ -153,16 +189,16 @@ export class DocumentRepostingService {
                 try {
                     if (doc.type === 'GOODS_RECEIPT') {
                         await GoodsReceiptService.post(doc.id, client);
-                        this.emitLog(`Posted Goods Receipt: ${doc.id}`);
+                        this.emitLog(`Проведено: ${formatDoc('GOODS_RECEIPT', doc)}`);
                     } else if (doc.type === 'PRICE_DOCUMENT') {
                         await PriceDocumentService.apply(doc.id, client);
-                        this.emitLog(`Applied Price Document: ${doc.id}`);
+                        this.emitLog(`Застосовано: ${formatDoc('PRICE_DOCUMENT', doc)}`);
                     } else if (doc.type === 'BUYER_RETURN') {
                         await BuyerReturnService.post(doc.id, client);
-                        this.emitLog(`Posted Buyer Return: ${doc.id}`);
+                        this.emitLog(`Проведено: ${formatDoc('BUYER_RETURN', doc)}`);
                     } else if (doc.type === 'REALIZATION') {
                         await RealizationService.post(doc.id, client);
-                        this.emitLog(`Posted Realization: ${doc.id}`);
+                        this.emitLog(`Проведено: ${formatDoc('REALIZATION', doc)}`);
                     }
                 } catch (postErr: any) {
                     let errorMessage = postErr.message;
@@ -173,17 +209,9 @@ export class DocumentRepostingService {
                         }
                     } catch(e) {}
                     
-                    const docTypeMap: any = {
-                        REALIZATION: 'Реалізація',
-                        BUYER_RETURN: 'Повернення покупця',
-                        GOODS_RECEIPT: 'Прибуткова накладна',
-                        PRICE_DOCUMENT: 'Встановлення цін'
-                    };
-                    const docName = docTypeMap[doc.type] || doc.type;
-                    const docDateStr = doc.date ? new Date(doc.date).toLocaleDateString('uk-UA') : '';
-                    const fullDocStr = `${docName} ${doc.number ? `№${doc.number}` : ''} від ${docDateStr}`.trim();
+                    const fullDocStr = formatDoc(doc.type, doc);
 
-                    this.emitLog(`Error posting ${fullDocStr}: ${errorMessage}`);
+                    this.emitLog(`Помилка проведення [${fullDocStr}]: ${errorMessage}`);
                     throw new Error(`Помилка в документі [${fullDocStr}]: ${errorMessage}`);
                 }
             }
