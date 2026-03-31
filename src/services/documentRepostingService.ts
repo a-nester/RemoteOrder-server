@@ -70,24 +70,24 @@ export class DocumentRepostingService {
             // Fetch documents based on filters
             let realizations: { rowCount: number | null, rows: any[] } = { rowCount: 0, rows: [] };
             if (includeType('REALIZATION')) {
-                realizations = await client.query(`SELECT id, date, "createdAt" as created_at FROM "Realization" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, paramsPosted);
+                realizations = await client.query(`SELECT id, date, number, "createdAt" as created_at FROM "Realization" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, paramsPosted);
             }
 
             let buyerReturns: { rowCount: number | null, rows: any[] } = { rowCount: 0, rows: [] };
             if (includeType('BUYER_RETURN')) {
-                buyerReturns = await client.query(`SELECT id, date, "createdAt" as created_at FROM "BuyerReturn" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, paramsPosted);
+                buyerReturns = await client.query(`SELECT id, date, number, "createdAt" as created_at FROM "BuyerReturn" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, paramsPosted);
             }
 
             let goodsReceipts: { rowCount: number | null, rows: any[] } = { rowCount: 0, rows: [] };
             if (includeType('GOODS_RECEIPT')) {
                 let grParams = [...paramsPosted];
                 if (action === 'POST') grParams[0] = 'SAVED'; // GoodsReceipt uses SAVED for unposted
-                goodsReceipts = await client.query(`SELECT id, date, "createdAt" as created_at FROM "GoodsReceipt" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, grParams);
+                goodsReceipts = await client.query(`SELECT id, date, number, "createdAt" as created_at FROM "GoodsReceipt" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, grParams);
             }
 
             let priceDocs: { rowCount: number | null, rows: any[] } = { rowCount: 0, rows: [] };
             if (includeType('PRICE_DOCUMENT')) {
-                priceDocs = await client.query(`SELECT id, date, "createdAt" as created_at FROM "PriceDocument" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, paramsApplied);
+                priceDocs = await client.query(`SELECT id, date, '' as number, "createdAt" as created_at FROM "PriceDocument" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, paramsApplied);
             }
 
             // 1. UNPOST sequence (Reverse Chronological)
@@ -173,8 +173,18 @@ export class DocumentRepostingService {
                         }
                     } catch(e) {}
                     
-                    this.emitLog(`Error posting ${doc.type} ${doc.id}: ${errorMessage}`);
-                    throw new Error(errorMessage);
+                    const docTypeMap: any = {
+                        REALIZATION: 'Реалізація',
+                        BUYER_RETURN: 'Повернення покупця',
+                        GOODS_RECEIPT: 'Прибуткова накладна',
+                        PRICE_DOCUMENT: 'Встановлення цін'
+                    };
+                    const docName = docTypeMap[doc.type] || doc.type;
+                    const docDateStr = doc.date ? new Date(doc.date).toLocaleDateString('uk-UA') : '';
+                    const fullDocStr = `${docName} ${doc.number ? `№${doc.number}` : ''} від ${docDateStr}`.trim();
+
+                    this.emitLog(`Error posting ${fullDocStr}: ${errorMessage}`);
+                    throw new Error(`Помилка в документі [${fullDocStr}]: ${errorMessage}`);
                 }
             }
             }
