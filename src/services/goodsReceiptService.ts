@@ -54,8 +54,7 @@ export class GoodsReceiptService {
         try {
             const current = await client.query(`SELECT status FROM "GoodsReceipt" WHERE id = $1`, [id]);
             if (current.rows.length === 0) throw new Error('Document not found');
-            if (current.rows[0].status === 'POSTED') throw new Error('Cannot edit POSTED document');
-
+            const isPosted = current.rows[0].status === 'POSTED';
             await client.query('BEGIN');
             const { number, date, warehouseId, providerId, comment, items } = data;
 
@@ -67,7 +66,77 @@ export class GoodsReceiptService {
                 [number, date, warehouseId, providerId, comment, id]
             );
 
-            // 2. Replace Items (Delete all & Insert new)
+            if (isPosted) {
+                // Fetch existing batches
+                const oldBatchesRes = await client.query(`SELECT id, "productId", "quantityTotal", "quantityLeft", "enterPrice" FROM "ProductBatch" WHERE "goodsReceiptId" = $1 FOR UPDATE`, [id]);
+                const oldBatchesMap = new Map();
+                for (const b of oldBatchesRes.rows) {
+                    if (!oldBatchesMap.has(b.productId)) {
+                        oldBatchesMap.set(b.productId, b);
+                    } else {
+                        // Consolidate if there were multiple batches for the same product
+                        const existing = oldBatchesMap.get(b.productId);
+                        existing.quantityTotal = Number(existing.quantityTotal) + Number(b.quantityTotal);
+                        existing.quantityLeft = Number(existing.quantityLeft) + Number(b.quantityLeft);
+                        existing._ids = existing._ids || [existing.id];
+                        existing._ids.push(b.id);
+                    }
+                }
+
+                // Check deleted or updated items
+                const incomingItemMap = new Map();
+                for (const item of (items || [])) {
+                    if (!incomingItemMap.has(item.productId)) {
+                        incomingItemMap.set(item.productId, { ...item, quantity: Number(item.quantity) });
+                    } else {
+                        incomingItemMap.get(item.productId).quantity += Number(item.quantity);
+                    }
+                }
+
+                for (const [productId, oldB] of Array.from(oldBatchesMap.entries())) {
+                    const sold = Number(oldB.quantityTotal) - Number(oldB.quantityLeft);
+                    const incomingItemsForProduct = incomingItemMap.get(productId);
+                    const newTotal = incomingItemsForProduct ? Number(incomingItemsForProduct.quantity) : 0;
+                    
+                    if (newTotal < sold) {
+                        throw new Error(`Проданий товар неможливо видалити чи зменшити нижче вже проданого (${sold}). Впишіть кількість >= ${sold}.`);
+                    }
+
+                    if (newTotal === 0 && sold === 0) {
+                        // Unsold item deleted
+                        await client.query(`DELETE FROM "ProductBatch" WHERE "goodsReceiptId" = $1 AND "productId" = $2`, [id, productId]);
+                    } else if (newTotal > 0) {
+                        // Product exists, update it
+                        const newLeft = newTotal - sold;
+                        const newPrice = Number(incomingItemsForProduct.price);
+                        
+                        // We strictly update the first batch to hold all new quantities, and dummy the rest if any
+                        const ids = oldB._ids || [oldB.id];
+                        await client.query(`UPDATE "ProductBatch" SET "quantityTotal" = $1, "quantityLeft" = $2, "enterPrice" = $3, "updatedAt" = NOW() WHERE id = $4`, [newTotal, newLeft, newPrice, ids[0]]);
+                        if (ids.length > 1) {
+                             for (let i = 1; i < ids.length; i++) {
+                                 await client.query(`UPDATE "ProductBatch" SET "quantityTotal" = 0, "quantityLeft" = 0, "updatedAt" = NOW() WHERE id = $1`, [ids[i]]);
+                             }
+                        }
+                    }
+                }
+
+                // Append any purely NEW products to ProductBatch
+                for (const [productId, incomingItem] of Array.from(incomingItemMap.entries())) {
+                    if (!oldBatchesMap.has(productId)) {
+                        await InventoryService.addStock(
+                            client,
+                            productId,
+                            Number(incomingItem.quantity),
+                            Number(incomingItem.price),
+                            id,
+                            new Date(date)
+                        );
+                    }
+                }
+            }
+
+            // Replace Items in DB for record
             await client.query(`DELETE FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = $1`, [id]);
 
             if (items && items.length > 0) {
@@ -148,6 +217,12 @@ export class GoodsReceiptService {
             if (doc.status !== 'POSTED') throw new Error('Document is not posted');
 
             await client.query('BEGIN');
+
+            // 0. Check if ANY batches have been sold
+            const batchesCheck = await client.query(`SELECT "productId", "quantityTotal", "quantityLeft" FROM "ProductBatch" WHERE "goodsReceiptId" = $1 AND "quantityLeft" < "quantityTotal"`, [id]);
+            if (batchesCheck.rows.length > 0) {
+                throw new Error('Неможливо розпровести документ: деякі товари вже частково або повністю продані. Редагуйте документ без розпроведення або спершу розпроведіть відповідні продажі.');
+            }
 
             // 1. Delete associated batches
             await client.query(`DELETE FROM "ProductBatch" WHERE "goodsReceiptId" = $1`, [id]);
