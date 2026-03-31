@@ -162,8 +162,8 @@ export class GoodsReceiptService {
     }
 
     // Post Document (Affect Stock)
-    static async post(id: string) {
-        const client = await pool.connect();
+    static async post(id: string, txClient?: any) {
+        const client = txClient || await pool.connect();
         try {
             const docRes = await client.query(`SELECT * FROM "GoodsReceipt" WHERE id = $1`, [id]);
             if (docRes.rows.length === 0) throw new Error('Document not found');
@@ -171,7 +171,7 @@ export class GoodsReceiptService {
 
             if (doc.status === 'POSTED') throw new Error('Document already posted');
 
-            await client.query('BEGIN');
+            if (!txClient) await client.query('BEGIN');
 
             // 1. Get Items
             const itemsRes = await client.query(`SELECT * FROM "GoodsReceiptItem" WHERE "goodsReceiptId" = $1 ORDER BY "sortOrder" ASC, "createdAt" ASC`, [id]);
@@ -196,19 +196,20 @@ export class GoodsReceiptService {
             // 3. Update Status
             await client.query(`UPDATE "GoodsReceipt" SET "status" = 'POSTED', "updatedAt" = NOW() WHERE id = $1`, [id]);
 
-            await client.query('COMMIT');
+            if (!txClient) await client.query('COMMIT');
+            if (txClient) return { id, status: 'POSTED' };
             return this.getById(id);
         } catch (error) {
-            await client.query('ROLLBACK');
+            if (!txClient) await client.query('ROLLBACK');
             throw error;
         } finally {
-            client.release();
+            if (!txClient) client.release();
         }
     }
 
     // Cancel Post (Remove from Stock)
-    static async unpost(id: string) {
-        const client = await pool.connect();
+    static async unpost(id: string, txClient?: any) {
+        const client = txClient || await pool.connect();
         try {
             const docRes = await client.query(`SELECT * FROM "GoodsReceipt" WHERE id = $1`, [id]);
             if (docRes.rows.length === 0) throw new Error('Document not found');
@@ -216,7 +217,7 @@ export class GoodsReceiptService {
 
             if (doc.status !== 'POSTED') throw new Error('Document is not posted');
 
-            await client.query('BEGIN');
+            if (!txClient) await client.query('BEGIN');
 
             // 0. Check if ANY batches have been sold
             const batchesCheck = await client.query(`SELECT "productId", "quantityTotal", "quantityLeft" FROM "ProductBatch" WHERE "goodsReceiptId" = $1 AND "quantityLeft" < "quantityTotal"`, [id]);
@@ -230,13 +231,14 @@ export class GoodsReceiptService {
             // 2. Update Status back to SAVED
             await client.query(`UPDATE "GoodsReceipt" SET "status" = 'SAVED', "updatedAt" = NOW() WHERE id = $1`, [id]);
 
-            await client.query('COMMIT');
+            if (!txClient) await client.query('COMMIT');
+            if (txClient) return { id, status: 'SAVED' };
             return this.getById(id);
         } catch (error) {
-            await client.query('ROLLBACK');
+            if (!txClient) await client.query('ROLLBACK');
             throw error;
         } finally {
-            client.release();
+            if (!txClient) client.release();
         }
     }
 

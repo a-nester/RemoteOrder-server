@@ -1,10 +1,10 @@
 import pool from '../db.js';
 
 export class PriceDocumentService {
-    static async apply(id: string) {
-        const client = await pool.connect();
+    static async apply(id: string, txClient?: any) {
+        const client = txClient || await pool.connect();
         try {
-            await client.query('BEGIN');
+            if (!txClient) await client.query('BEGIN');
 
             const docResult = await client.query(`
                 SELECT pd.*, pt.slug as "targetPriceSlug"
@@ -61,13 +61,13 @@ export class PriceDocumentService {
                 WHERE id = $1
             `, [id]);
 
-            await client.query('COMMIT');
+            if (!txClient) await client.query('COMMIT');
             return { success: true };
         } catch (error) {
-            await client.query('ROLLBACK');
+            if (!txClient) await client.query('ROLLBACK');
             throw error;
         } finally {
-            client.release();
+            if (!txClient) client.release();
         }
     }
 }

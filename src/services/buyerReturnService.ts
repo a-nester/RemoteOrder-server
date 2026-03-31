@@ -107,8 +107,8 @@ export class BuyerReturnService {
     }
 
     // Post Document (Affect Stock negatively, profit negatively)
-    static async post(id: string) {
-        const client = await pool.connect();
+    static async post(id: string, txClient?: any) {
+        const client = txClient || await pool.connect();
         try {
             const docRes = await client.query(`SELECT * FROM "BuyerReturn" WHERE id = $1`, [id]);
             if (docRes.rows.length === 0) throw new Error('Document not found');
@@ -116,7 +116,7 @@ export class BuyerReturnService {
 
             if (doc.status === 'POSTED') throw new Error('Document already posted');
 
-            await client.query('BEGIN');
+            if (!txClient) await client.query('BEGIN');
 
             const itemsRes = await client.query(`SELECT * FROM "BuyerReturnItem" WHERE "buyerReturnId" = $1 ORDER BY "sortOrder" ASC`, [id]);
             const items = itemsRes.rows;
@@ -165,19 +165,20 @@ export class BuyerReturnService {
                 [totalProfit, id]
             );
 
-            await client.query('COMMIT');
+            if (!txClient) await client.query('COMMIT');
+            if (txClient) return { id, status: 'POSTED' };
             return this.getById(id);
         } catch (error) {
-            await client.query('ROLLBACK');
+            if (!txClient) await client.query('ROLLBACK');
             throw error;
         } finally {
-            client.release();
+            if (!txClient) client.release();
         }
     }
 
     // Cancel Post (Remove from Stock)
-    static async unpost(id: string) {
-        const client = await pool.connect();
+    static async unpost(id: string, txClient?: any) {
+        const client = txClient || await pool.connect();
         try {
             const docRes = await client.query(`SELECT * FROM "BuyerReturn" WHERE id = $1`, [id]);
             if (docRes.rows.length === 0) throw new Error('Document not found');
@@ -185,7 +186,7 @@ export class BuyerReturnService {
 
             if (doc.status !== 'POSTED') throw new Error('Document is not posted');
 
-            await client.query('BEGIN');
+            if (!txClient) await client.query('BEGIN');
 
             // Removing batches outright (safely using the exact buyerReturnId mapping we added)
             await client.query(`DELETE FROM "ProductBatch" WHERE "buyerReturnId" = $1`, [id]);
@@ -215,13 +216,14 @@ export class BuyerReturnService {
                 WHERE id = $1
             `, [id]);
 
-            await client.query('COMMIT');
+            if (!txClient) await client.query('COMMIT');
+            if (txClient) return { id, status: 'SAVED' };
             return this.getById(id);
         } catch (error) {
-            await client.query('ROLLBACK');
+            if (!txClient) await client.query('ROLLBACK');
             throw error;
         } finally {
-            client.release();
+            if (!txClient) client.release();
         }
     }
 

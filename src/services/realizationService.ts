@@ -2,10 +2,10 @@ import pool from '../db.js';
 import { InventoryService } from './inventoryService.js';
 
 export class RealizationService {
-    static async post(id: string) {
-        const client = await pool.connect();
+    static async post(id: string, txClient?: any) {
+        const client = txClient || await pool.connect();
         try {
-            await client.query('BEGIN');
+            if (!txClient) await client.query('BEGIN');
 
             const docRes = await client.query('SELECT * FROM "Realization" WHERE id = $1 FOR UPDATE', [id]);
             if (docRes.rowCount === 0) throw new Error('Realization not found');
@@ -51,20 +51,21 @@ export class RealizationService {
                 await client.query(`UPDATE "Order" SET "status" = 'COMPLETED', "updatedAt" = NOW() WHERE "id" = $1`, [doc.orderId]);
             }
 
-            await client.query('COMMIT');
+            if (!txClient) await client.query('COMMIT');
+            if (txClient) return { success: true, profit };
             return { success: true, profit };
         } catch (error) {
-            await client.query('ROLLBACK');
+            if (!txClient) await client.query('ROLLBACK');
             throw error;
         } finally {
-            client.release();
+            if (!txClient) client.release();
         }
     }
 
-    static async unpost(id: string) {
-        const client = await pool.connect();
+    static async unpost(id: string, txClient?: any) {
+        const client = txClient || await pool.connect();
         try {
-            await client.query('BEGIN');
+            if (!txClient) await client.query('BEGIN');
 
             const docRes = await client.query('SELECT * FROM "Realization" WHERE id = $1 FOR UPDATE', [id]);
             if (docRes.rowCount === 0) throw new Error('Realization not found');
@@ -97,13 +98,14 @@ export class RealizationService {
                 await client.query(`UPDATE "Order" SET "status" = 'ACCEPTED', "updatedAt" = NOW() WHERE "id" = $1`, [realization.orderId]);
             }
 
-            await client.query('COMMIT');
+            if (!txClient) await client.query('COMMIT');
+            if (txClient) return { success: true };
             return { success: true };
         } catch (error) {
-            await client.query('ROLLBACK');
+            if (!txClient) await client.query('ROLLBACK');
             throw error;
         } finally {
-            client.release();
+            if (!txClient) client.release();
         }
     }
 }

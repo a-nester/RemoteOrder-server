@@ -111,10 +111,10 @@ export class SupplierReturnService {
     }
 
     // Post Document (Subtract Stock - Supplier return reduces our inventory)
-    static async post(id: string) {
-        const client = await pool.connect();
+    static async post(id: string, txClient?: any) {
+        const client = txClient || await pool.connect();
         try {
-            await client.query('BEGIN');
+            if (!txClient) await client.query('BEGIN');
             
             const docRes = await client.query(`SELECT * FROM "SupplierReturn" WHERE id = $1 FOR UPDATE`, [id]);
             if (docRes.rows.length === 0) throw new Error('Document not found');
@@ -161,10 +161,10 @@ export class SupplierReturnService {
     }
 
     // Cancel Post (Remove from Stock)
-    static async unpost(id: string) {
-        const client = await pool.connect();
+    static async unpost(id: string, txClient?: any) {
+        const client = txClient || await pool.connect();
         try {
-            await client.query('BEGIN');
+            if (!txClient) await client.query('BEGIN');
             
             const docRes = await client.query(`SELECT * FROM "SupplierReturn" WHERE id = $1 FOR UPDATE`, [id]);
             if (docRes.rows.length === 0) throw new Error('Document not found');
@@ -203,13 +203,14 @@ export class SupplierReturnService {
                 WHERE id = $1
             `, [id]);
 
-            await client.query('COMMIT');
+            if (!txClient) await client.query('COMMIT');
+            if (txClient) return { id, status: 'SAVED' };
             return this.getById(id);
         } catch (error) {
-            await client.query('ROLLBACK');
+            if (!txClient) await client.query('ROLLBACK');
             throw error;
         } finally {
-            client.release();
+            if (!txClient) client.release();
         }
     }
 

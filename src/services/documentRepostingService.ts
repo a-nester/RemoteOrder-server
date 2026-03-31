@@ -18,7 +18,7 @@ export class DocumentRepostingService {
         try {
             client = await pool.connect();
             
-            // 1. Acquire System Lock
+            // 1. Acquire System Lock (Autocommit mode)
             const lockCheck = await client.query('SELECT "isLocked" FROM "DocumentLock" WHERE id = $1', ['document_operations']);
             if (lockCheck.rows.length > 0 && lockCheck.rows[0].isLocked) {
                 throw new Error('System is already locked. Reposting might already be in progress.');
@@ -27,10 +27,13 @@ export class DocumentRepostingService {
             // Lock it
             await client.query(`UPDATE "DocumentLock" SET "isLocked" = true, "lockedBy" = $1, "lockedAt" = NOW(), reason = 'Bulk document reposting' WHERE id = 'document_operations'`, [userId]);
             
+            // 2. Start Global Transaction
+            await client.query('BEGIN');
+
             this.emitLog('Starting Document Reposting process...');
             if (options?.startDate) this.emitLog(`Filter: From date ${options.startDate}`);
             if (options?.types) this.emitLog(`Filter: Types [${options.types.join(', ')}]`);
-            this.emitLog('System locked for maintenance.');
+            this.emitLog('System locked for maintenance. Global transaction started.');
 
             const dateQuery = options?.startDate ? ` AND date >= $2` : "";
             const paramsPosted = options?.startDate ? ['POSTED', options.startDate] : ['POSTED'];
@@ -62,19 +65,19 @@ export class DocumentRepostingService {
             // 1. UNPOST sequence (Reverse Chronological)
             this.emitLog(`Phase 1: Unposting ${realizations.rowCount} Realizations...`);
             for (const row of realizations.rows) {
-                await RealizationService.unpost(row.id);
+                await RealizationService.unpost(row.id, client);
                 this.emitLog(`Unposted Realization: ${row.id}`);
             }
 
             this.emitLog(`Phase 1: Unposting ${buyerReturns.rowCount} Buyer Returns...`);
             for (const row of buyerReturns.rows) {
-                await BuyerReturnService.unpost(row.id);
+                await BuyerReturnService.unpost(row.id, client);
                 this.emitLog(`Unposted Buyer Return: ${row.id}`);
             }
 
             this.emitLog(`Phase 1: Unposting ${goodsReceipts.rowCount} Goods Receipts...`);
             for (const row of goodsReceipts.rows) {
-                await GoodsReceiptService.unpost(row.id);
+                await GoodsReceiptService.unpost(row.id, client);
                 this.emitLog(`Unposted Goods Receipt: ${row.id}`);
             }
 
@@ -119,38 +122,45 @@ export class DocumentRepostingService {
             for (const doc of toPost) {
                 try {
                     if (doc.type === 'GOODS_RECEIPT') {
-                        await GoodsReceiptService.post(doc.id);
+                        await GoodsReceiptService.post(doc.id, client);
                         this.emitLog(`Posted Goods Receipt: ${doc.id}`);
                     } else if (doc.type === 'PRICE_DOCUMENT') {
-                        await PriceDocumentService.apply(doc.id);
+                        await PriceDocumentService.apply(doc.id, client);
                         this.emitLog(`Applied Price Document: ${doc.id}`);
                     } else if (doc.type === 'BUYER_RETURN') {
-                        await BuyerReturnService.post(doc.id);
+                        await BuyerReturnService.post(doc.id, client);
                         this.emitLog(`Posted Buyer Return: ${doc.id}`);
                     } else if (doc.type === 'REALIZATION') {
-                        await RealizationService.post(doc.id);
+                        await RealizationService.post(doc.id, client);
                         this.emitLog(`Posted Realization: ${doc.id}`);
                     }
                 } catch (postErr: any) {
-                    this.emitLog(`Error posting ${doc.type} ${doc.id}: ${postErr.message}`);
-                    throw postErr; // Abort on first post failure to avoid inconsistent state, or continue? Abort is safer.
+                    let errorMessage = postErr.message;
+                    try {
+                        const parsed = JSON.parse(postErr.message);
+                        if (parsed.code === 'INSUFFICIENT_STOCK') {
+                            errorMessage = `Не вистачає товару '${parsed.productName}'. Потрібно: ${parsed.needed}`;
+                        }
+                    } catch(e) {}
+                    
+                    this.emitLog(`Error posting ${doc.type} ${doc.id}: ${errorMessage}`);
+                    throw new Error(errorMessage);
                 }
             }
 
+            await client.query('COMMIT');
             this.emitLog('Document Reposting process completed successfully.');
-            
         } catch (error: any) {
-            console.error('Reposting error:', error);
-            this.emitLog(`ERROR: ${error.message}`);
+            if (client) await client.query('ROLLBACK');
+            this.emitLog(`Reposting error: ${error.message}`);
             throw error;
         } finally {
             if (client) {
-                // Release System Lock
                 try {
-                    await client.query(`UPDATE "DocumentLock" SET "isLocked" = false, "lockedBy" = null, "lockedAt" = null, reason = null WHERE id = 'document_operations'`);
+                    await client.query(`UPDATE "DocumentLock" SET "isLocked" = false, "lockedBy" = NULL, "lockedAt" = NULL, reason = NULL WHERE id = 'document_operations'`);
                     this.emitLog('System unlocked.');
                 } catch (e) {
-                    console.error('Failed to release system lock!', e);
+                    console.error("Failed to release document_operations lock", e);
                 }
                 client.release();
             }
