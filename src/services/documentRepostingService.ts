@@ -7,8 +7,13 @@ import { EventEmitter } from 'events';
 
 export const repostingEvents = new EventEmitter();
 
+interface RepostOptions {
+    startDate?: string;
+    types?: string[];
+}
+
 export class DocumentRepostingService {
-    static async run(userId?: string) {
+    static async run(userId?: string, options?: RepostOptions) {
         let client = null;
         try {
             client = await pool.connect();
@@ -23,13 +28,36 @@ export class DocumentRepostingService {
             await client.query(`UPDATE "DocumentLock" SET "isLocked" = true, "lockedBy" = $1, "lockedAt" = NOW(), reason = 'Bulk document reposting' WHERE id = 'document_operations'`, [userId]);
             
             this.emitLog('Starting Document Reposting process...');
+            if (options?.startDate) this.emitLog(`Filter: From date ${options.startDate}`);
+            if (options?.types) this.emitLog(`Filter: Types [${options.types.join(', ')}]`);
             this.emitLog('System locked for maintenance.');
 
-            // Fetch all POSTED/APPLIED documents
-            const realizations = await client.query('SELECT id, date, "createdAt" as created_at FROM "Realization" WHERE status = $1 ORDER BY date DESC, "createdAt" DESC', ['POSTED']);
-            const buyerReturns = await client.query('SELECT id, date, "createdAt" as created_at FROM "BuyerReturn" WHERE status = $1 ORDER BY date DESC, "createdAt" DESC', ['POSTED']);
-            const goodsReceipts = await client.query('SELECT id, date, "createdAt" as created_at FROM "GoodsReceipt" WHERE status = $1 ORDER BY date DESC, "createdAt" DESC', ['POSTED']);
-            const priceDocs = await client.query('SELECT id, date, "createdAt" as created_at FROM "PriceDocument" WHERE status = $1 ORDER BY date DESC, "createdAt" DESC', ['APPLIED']);
+            const dateQuery = options?.startDate ? ` AND date >= $2` : "";
+            const paramsPosted = options?.startDate ? ['POSTED', options.startDate] : ['POSTED'];
+            const paramsApplied = options?.startDate ? ['APPLIED', options.startDate] : ['APPLIED'];
+
+            const includeType = (type: string) => !options?.types || options.types.length === 0 || options.types.includes(type);
+
+            // Fetch all POSTED/APPLIED documents based on filters
+            let realizations: { rowCount: number | null, rows: any[] } = { rowCount: 0, rows: [] };
+            if (includeType('REALIZATION')) {
+                realizations = await client.query(`SELECT id, date, "createdAt" as created_at FROM "Realization" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, paramsPosted);
+            }
+
+            let buyerReturns: { rowCount: number | null, rows: any[] } = { rowCount: 0, rows: [] };
+            if (includeType('BUYER_RETURN')) {
+                buyerReturns = await client.query(`SELECT id, date, "createdAt" as created_at FROM "BuyerReturn" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, paramsPosted);
+            }
+
+            let goodsReceipts: { rowCount: number | null, rows: any[] } = { rowCount: 0, rows: [] };
+            if (includeType('GOODS_RECEIPT')) {
+                goodsReceipts = await client.query(`SELECT id, date, "createdAt" as created_at FROM "GoodsReceipt" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, paramsPosted);
+            }
+
+            let priceDocs: { rowCount: number | null, rows: any[] } = { rowCount: 0, rows: [] };
+            if (includeType('PRICE_DOCUMENT')) {
+                priceDocs = await client.query(`SELECT id, date, "createdAt" as created_at FROM "PriceDocument" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, paramsApplied);
+            }
 
             // 1. UNPOST sequence (Reverse Chronological)
             this.emitLog(`Phase 1: Unposting ${realizations.rowCount} Realizations...`);

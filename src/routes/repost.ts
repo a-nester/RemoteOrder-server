@@ -7,10 +7,11 @@ const router = Router();
 // Start Reposting Process
 router.post('/', userAuth, (req: Request, res: Response) => {
     const userId = (req as AuthRequest).user?.id;
+    const { startDate, types } = req.body;
     
     // Run in background so the request doesn't timeout
     setTimeout(() => {
-        DocumentRepostingService.run(userId).catch(err => {
+        DocumentRepostingService.run(userId, { startDate, types }).catch(err => {
             console.error("Background reposting failed:", err);
             // Optionally emit a final failure event
             repostingEvents.emit('message', { data: `CRITICAL ERROR: ${err.message}` });
