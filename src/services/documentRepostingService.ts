@@ -70,7 +70,7 @@ export class DocumentRepostingService {
             // Fetch documents based on filters
             let realizations: { rowCount: number | null, rows: any[] } = { rowCount: 0, rows: [] };
             if (includeType('REALIZATION')) {
-                realizations = await client.query(`SELECT id, date, number, "createdAt" as created_at FROM "Realization" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, paramsPosted);
+                realizations = await client.query(`SELECT id, date, number, "createdAt" as created_at FROM "Realization" WHERE status = $1 AND "isDeleted" = FALSE ${dateQuery} ORDER BY date DESC, "createdAt" DESC`, paramsPosted);
             }
 
             let buyerReturns: { rowCount: number | null, rows: any[] } = { rowCount: 0, rows: [] };
@@ -82,7 +82,7 @@ export class DocumentRepostingService {
             if (includeType('GOODS_RECEIPT')) {
                 let grParams = [...paramsPosted];
                 if (action === 'POST') grParams[0] = 'SAVED'; // GoodsReceipt uses SAVED for unposted
-                goodsReceipts = await client.query(`SELECT id, date, number, "createdAt" as created_at FROM "GoodsReceipt" WHERE status = $1${dateQuery} ORDER BY date DESC, "createdAt" DESC`, grParams);
+                goodsReceipts = await client.query(`SELECT id, date, number, "createdAt" as created_at FROM "GoodsReceipt" WHERE status = $1 AND "isDeleted" = FALSE ${dateQuery} ORDER BY date DESC, "createdAt" DESC`, grParams);
             }
 
             let priceDocs: { rowCount: number | null, rows: any[] } = { rowCount: 0, rows: [] };

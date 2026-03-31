@@ -1,16 +1,10 @@
-import pool from './dist/db.js';
-import dotenv from 'dotenv';
-dotenv.config();
-
-async function run() {
-  const client = await pool.connect();
-  try {
-    const res = await client.query(`SELECT column_name FROM information_schema.columns WHERE table_name = 'Order'`);
-    console.log("Order columns:", res.rows.map(r => r.column_name));
-    
-    const rRes = await client.query(`SELECT column_name FROM information_schema.columns WHERE table_name = 'Realization'`);
-    console.log("Realization columns:", rRes.rows.map(r => r.column_name));
-  } catch(e) { console.error(e); }
-  finally { client.release(); pool.end(); }
-}
-run();
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: 'postgres://remote_order_user:mypassword123@localhost:5432/remote_order_db' });
+(async () => {
+    const tables = ["Realization", "BuyerReturn", "GoodsReceipt", "PriceDocument"];
+    for (const t of tables) {
+        const res = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name = '${t}' AND column_name = 'isDeleted'`);
+        console.log(t, "has isDeleted:", res.rowCount > 0);
+    }
+    process.exit(0);
+})();
