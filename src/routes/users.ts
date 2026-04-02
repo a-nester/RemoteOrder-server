@@ -7,7 +7,7 @@ const router = Router();
 
 // Middleware to ensure user is admin
 const requireAdmin = (req: AuthRequest, res: Response, next: any) => {
-    if (!req.user || req.user.role !== 'admin') {
+    if (!req.user || !req.user.role || req.user.role.toLowerCase() !== 'admin') {
         return res.status(403).json({ error: 'Access denied: Requires admin' });
     }
     next();
@@ -41,7 +41,7 @@ router.put('/me/preferences', userAuth, async (req: AuthRequest, res: Response) 
 });
 
 // Apply admin check for the rest of the generic user routes
-router.use(requireAdmin);
+router.use(userAuth, requireAdmin);
 
 // GET all users
 router.get('/', async (req: AuthRequest, res: Response) => {
