@@ -270,6 +270,10 @@ export class BuyerReturnService {
             query += ` AND br.date <= $${pIdx++}`;
             params.push(filters.endDate);
         }
+        if (filters.warehouseId) {
+            query += ` AND br."warehouseId" = $${pIdx++}`;
+            params.push(filters.warehouseId);
+        }
 
         query += ` ORDER BY br.date DESC`;
 

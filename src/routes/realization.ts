@@ -11,6 +11,7 @@ const router = express.Router();
 router.get('/', userAuth, async (req, res) => {
     try {
         const { includeDeleted } = req.query;
+        const user = (req as AuthRequest).user;
         let query = `
             SELECT r.*, c.name as "counterpartyName", w.name as "warehouseName"
             FROM "Realization" r
@@ -18,6 +19,14 @@ router.get('/', userAuth, async (req, res) => {
             LEFT JOIN "Warehouse" w ON r."warehouseId" = w.id
             WHERE 1=1
         `;
+        let values: any[] = [];
+        let paramIndex = 1;
+
+        if (user && user.role !== 'admin' && user.warehouseId) {
+            query += ` AND r."warehouseId" = $${paramIndex}`;
+            values.push(user.warehouseId);
+            paramIndex++;
+        }
 
         if (includeDeleted !== 'true') {
             query += ` AND r."isDeleted" = FALSE`;
@@ -25,7 +34,7 @@ router.get('/', userAuth, async (req, res) => {
 
         query += ` ORDER BY r.date DESC`;
         
-        const result = await pool.query(query);
+        const result = await pool.query(query, values);
         res.json(result.rows);
     } catch (error) {
         console.error('Error fetching realizations:', error);
@@ -36,17 +45,26 @@ router.get('/', userAuth, async (req, res) => {
 // Get Realization Details
 router.get('/:id', userAuth, async (req, res) => {
     const { id } = req.params;
+    const user = (req as AuthRequest).user;
     try {
-        const realization = await pool.query(`
+        let fetchSql = `
             SELECT r.*, c.name as "counterpartyName", w.name as "warehouseName", o.name as "organizationName"
             FROM "Realization" r
             LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
             LEFT JOIN "Warehouse" w ON r."warehouseId" = w.id
             LEFT JOIN "Organization" o ON c."organizationId" = o.id
             WHERE r.id = $1
-        `, [id]);
+        `;
+        let values: any[] = [id];
+        
+        if (user && user.role !== 'admin' && user.warehouseId) {
+            fetchSql += ` AND r."warehouseId" = $2`;
+            values.push(user.warehouseId);
+        }
 
-        if ((realization.rowCount || 0) === 0) return res.status(404).json({ message: 'Realization not found' });
+        const realization = await pool.query(fetchSql, values);
+
+        if ((realization.rowCount || 0) === 0) return res.status(404).json({ message: 'Realization not found or access denied' });
 
         const items = await pool.query(`
             SELECT ri.*, p.name as "productName"
@@ -67,7 +85,14 @@ router.get('/:id', userAuth, async (req, res) => {
 
 // Create Manual Realization
 router.post('/', userAuth, async (req, res) => {
-    const { date, counterpartyId, warehouseId, amount, comment, items, salesType } = req.body;
+    let { date, counterpartyId, warehouseId, amount, comment, items, salesType } = req.body;
+    const user = (req as AuthRequest).user;
+    
+    // Force warehouse assignment for non-admins
+    if (user && user.role !== 'admin' && user.warehouseId) {
+        warehouseId = user.warehouseId;
+    }
+    
     const client = await pool.connect();
 
     try {

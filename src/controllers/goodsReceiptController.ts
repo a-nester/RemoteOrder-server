@@ -5,9 +5,11 @@ export class GoodsReceiptController {
     // GET /api/goods-receipt
     static async getAll(req: any, res: any) {
         try {
+            const user = req.user;
             const filters = {
                 startDate: req.query.startDate,
-                endDate: req.query.endDate
+                endDate: req.query.endDate,
+                warehouseId: user && user.role !== 'admin' ? user.warehouseId : undefined
             };
             const docs = await GoodsReceiptService.getAll(filters);
             res.json(docs);
@@ -32,8 +34,15 @@ export class GoodsReceiptController {
     // POST /api/goods-receipt (Create)
     static async create(req: any, res: any) {
         try {
-            const userId = req.user?.id || 'system'; // Should come from auth middleware
-            const doc = await GoodsReceiptService.create(req.body, userId);
+            const user = req.user;
+            const userId = req.user?.id || 'system';
+            
+            let data = req.body;
+            if (user && user.role !== 'admin' && user.warehouseId) {
+                data.warehouseId = user.warehouseId;
+            }
+
+            const doc = await GoodsReceiptService.create(data, userId);
             res.status(201).json(doc);
         } catch (error) {
             console.error('Create GoodsReceipt error:', error);
@@ -44,7 +53,13 @@ export class GoodsReceiptController {
     // PUT /api/goods-receipt/:id (Update)
     static async update(req: any, res: any) {
         try {
-            const doc = await GoodsReceiptService.update(req.params.id, req.body);
+            const user = req.user;
+            let data = req.body;
+            if (user && user.role !== 'admin' && user.warehouseId) {
+                data.warehouseId = user.warehouseId;
+            }
+
+            const doc = await GoodsReceiptService.update(req.params.id, data);
             res.json(doc);
         } catch (error: any) {
             console.error('Update GoodsReceipt error:', error);

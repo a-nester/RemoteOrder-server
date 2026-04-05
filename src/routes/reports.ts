@@ -1,17 +1,23 @@
 import { Router, Request, Response } from 'express';
 import pool from '../db.js';
-import { adminAuth } from '../middleware/auth.js';
+import { userAuth, AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 
-// Apply admin auth to all report routes
-router.use(adminAuth);
+// Apply auth to all report routes
+router.use(userAuth);
 
 // GET /api/reports/stock-balances
 router.get('/stock-balances', async (req: Request, res: Response) => {
     try {
         const dateParam = req.query.date as string;
-        const warehouseId = req.query.warehouseId as string;
+        let warehouseId = req.query.warehouseId as string;
+        const user = (req as AuthRequest).user;
+        
+        if (user && user.role !== 'admin' && user.warehouseId) {
+            warehouseId = user.warehouseId;
+        }
+
         const sortBy = req.query.sortBy as string || 'category'; // 'category' or 'name'
 
         // Default to current date if none provided
@@ -83,7 +89,12 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
 // GET /api/reports/inventory-movement
 router.get('/inventory-movement', async (req: Request, res: Response) => {
     try {
-        const { dateFrom, dateTo, warehouseId, sortBy = 'category' } = req.query;
+        let { dateFrom, dateTo, warehouseId, sortBy = 'category' } = req.query;
+        const user = (req as AuthRequest).user;
+
+        if (user && user.role !== 'admin' && user.warehouseId) {
+            warehouseId = user.warehouseId as string;
+        }
 
         if (!dateFrom || !dateTo || !warehouseId) {
             return res.status(400).json({ error: 'Missing required parameters: dateFrom, dateTo, warehouseId' });
@@ -229,9 +240,16 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
 router.get('/sales/by-client', async (req: Request, res: Response) => {
     try {
         const { dateFrom, dateTo, counterparty, groupBySalesType, salesType } = req.query;
+        const user = (req as AuthRequest).user;
         let params: any[] = [];
         let rFilters = '';
         let brFilters = '';
+
+        if (user && user.role !== 'admin' && user.warehouseId) {
+            rFilters += ` AND r."warehouseId" = $${params.length + 1}`;
+            brFilters += ` AND br."warehouseId" = $${params.length + 1}`;
+            params.push(user.warehouseId);
+        }
 
         if (dateFrom && dateTo) {
             rFilters += ` AND r.date >= $${params.length + 1}::date AND r.date < ($${params.length + 2}::date + interval '1 day')`;
@@ -311,9 +329,16 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
 router.get('/sales/by-product', async (req: Request, res: Response) => {
     try {
         const { dateFrom, dateTo, counterparty, groupBySalesType, salesType } = req.query;
+        const user = (req as AuthRequest).user;
         let params: any[] = [];
         let rFilters = '';
         let brFilters = '';
+
+        if (user && user.role !== 'admin' && user.warehouseId) {
+            rFilters += ` AND r."warehouseId" = $${params.length + 1}`;
+            brFilters += ` AND br."warehouseId" = $${params.length + 1}`;
+            params.push(user.warehouseId);
+        }
 
         if (dateFrom && dateTo) {
             rFilters += ` AND r.date >= $${params.length + 1}::date AND r.date < ($${params.length + 2}::date + interval '1 day')`;

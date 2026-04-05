@@ -4,7 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
-import { adminAuth } from '../middleware/auth.js';
+import { adminAuth, userAuth } from '../middleware/auth.js';
 import { generateDocNumber } from '../utils/docNumberGenerator.js';
 
 // removed MulterRequest interface to avoid conflict
@@ -236,12 +236,17 @@ router.post('/prices/set', PriceController.setPrice);
 router.get('/prices/history/:productId', PriceController.getHistory);
 
 // ➕ Create Order
-router.post('/orders', async (req: Request, res: Response) => {
+router.post('/orders', userAuth, async (req: Request, res: Response) => {
     console.log('[POST /orders] Body:', JSON.stringify(req.body, null, 2));
     const client = await pool.connect();
     try {
-        const { date, counterpartyId, status, items, comment, amount, currency } = req.body;
-        let userId = (req as any).user.id;
+        let { date, counterpartyId, status, items, comment, amount, currency, warehouseId } = req.body;
+        let user = (req as any).user;
+        let userId = user?.id;
+
+        if (user && user.role !== 'admin' && user.warehouseId) {
+            warehouseId = user.warehouseId;
+        }
 
         // If using admin secret (legacy), user.id might be undefined.
         // Use a placeholder UUID for system admin actions.
@@ -266,8 +271,8 @@ router.post('/orders', async (req: Request, res: Response) => {
         await client.query('BEGIN');
 
         const insertQuery = `
-            INSERT INTO "Order" (id, "userId", "counterpartyId", status, total, items, comment, "docNumber", "createdAt", "updatedAt")
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+            INSERT INTO "Order" (id, "userId", "counterpartyId", status, total, items, comment, "docNumber", "createdAt", "updatedAt", "warehouseId")
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10)
             RETURNING *
         `;
 
@@ -280,7 +285,8 @@ router.post('/orders', async (req: Request, res: Response) => {
             JSON.stringify(items || []),
             comment,
             docNumber,
-            date ? new Date(date) : new Date()
+            date ? new Date(date) : new Date(),
+            warehouseId || null
         ]);
 
         // 2. Insert Items
@@ -315,9 +321,10 @@ router.post('/orders', async (req: Request, res: Response) => {
     }
 });
 // 📦 Orders Management
-router.get('/orders', async (req: Request, res: Response) => {
+router.get('/orders', userAuth, async (req: Request, res: Response) => {
     try {
         const { startDate, endDate, search, includeDeleted } = req.query;
+        let user = (req as any).user;
 
         let query = `
 				SELECT o.*, c.name as "counterpartyName" 
@@ -327,6 +334,12 @@ router.get('/orders', async (req: Request, res: Response) => {
 			`;
         const params: any[] = [];
         let paramIndex = 1;
+
+        if (user && user.role !== 'admin' && user.warehouseId) {
+            query += ` AND o."warehouseId" = $${paramIndex}`;
+            params.push(user.warehouseId);
+            paramIndex++;
+        }
 
         if (includeDeleted !== 'true') {
             query += ` AND (o."isDeleted" = false OR o."isDeleted" IS NULL)`;

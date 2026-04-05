@@ -257,6 +257,10 @@ export class SupplierReturnService {
             query += ` AND sr."date" <= $${pIdx++}`;
             params.push(`${filters.endDate} 23:59:59`);
         }
+        if (filters.warehouseId) {
+            query += ` AND sr."warehouseId" = $${pIdx++}`;
+            params.push(filters.warehouseId);
+        }
 
         query += ` ORDER BY sr."date" DESC, sr."createdAt" DESC`;
 

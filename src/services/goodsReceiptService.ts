@@ -287,8 +287,12 @@ export class GoodsReceiptService {
             query += ` AND gr.date <= $${pIdx++}`;
             params.push(filters.endDate);
         }
+        if (filters.warehouseId) {
+            query += ` AND gr."warehouseId" = $${pIdx++}`;
+            params.push(filters.warehouseId);
+        }
 
-        query += ` ORDER BY gr.date DESC`;
+        query += ' ORDER BY gr.date DESC';
 
         const result = await pool.query(query, params);
         return result.rows;

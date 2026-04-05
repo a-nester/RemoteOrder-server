@@ -1,10 +1,10 @@
 import express from "express";
 import pool from "../db.js";
-import { adminAuth } from "../middleware/auth.js";
+import { userAuth, AuthRequest } from "../middleware/auth.js";
 
 const router = express.Router();
 
-router.use(adminAuth as any);
+router.use(userAuth as any);
 
 router.get("/", async (req, res) => {
   const { dayOfWeek } = req.query;
@@ -14,6 +14,15 @@ router.get("/", async (req, res) => {
   }
 
   try {
+    const user = (req as AuthRequest).user;
+    let userWarehouseFilter = '';
+    let params: any[] = [dayOfWeek];
+
+    if (user && user.role !== 'admin' && user.warehouseId) {
+        userWarehouseFilter = ` AND "warehouseId" = $2`;
+        params.push(user.warehouseId);
+    }
+
     const result = await pool.query(
       `
       WITH scheduled_clients AS (
@@ -24,6 +33,7 @@ router.get("/", async (req, res) => {
         WHERE "counterpartyId" IN (SELECT client_id FROM scheduled_clients)
         AND "createdAt" >= date_trunc('week', CURRENT_DATE)
         AND EXTRACT(ISODOW FROM "createdAt") = $1
+        ${userWarehouseFilter}
       )
       SELECT 
         p.id as product_id,
@@ -36,7 +46,7 @@ router.get("/", async (req, res) => {
       GROUP BY p.id, p.name, p.sku
       ORDER BY p.name ASC
       `,
-      [dayOfWeek]
+      params
     );
 
     res.json(result.rows);

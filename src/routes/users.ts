@@ -59,7 +59,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 // CREATE new user
 router.post('/', async (req: AuthRequest, res: Response) => {
     try {
-        const { email, password, role, counterpartyId, organizationId } = req.body;
+        const { email, password, role, counterpartyId, organizationId, warehouseId } = req.body;
         
         if (!email || !password || !role) {
             return res.status(400).json({ error: 'Email, password, and role are required' });
@@ -74,10 +74,10 @@ router.post('/', async (req: AuthRequest, res: Response) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         
         const result = await pool.query(
-            `INSERT INTO "User" (email, password, role, "counterpartyId", "organizationId", preferences) 
-             VALUES ($1, $2, $3, $4, $5, '{}') 
+            `INSERT INTO "User" (email, password, role, "counterpartyId", "organizationId", "warehouseId", preferences) 
+             VALUES ($1, $2, $3, $4, $5, $6, '{}') 
              RETURNING id, email, role, "warehouseId", "counterpartyId", "organizationId", preferences`,
-            [email, hashedPassword, role, counterpartyId || null, organizationId || null]
+            [email, hashedPassword, role, counterpartyId || null, organizationId || null, warehouseId || null]
         );
 
         res.status(201).json(result.rows[0]);
@@ -91,7 +91,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 router.put('/:id', async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const { email, role, password, counterpartyId, organizationId, preferences } = req.body;
+        const { email, role, password, counterpartyId, organizationId, warehouseId, preferences } = req.body;
 
         if (!email || !role) {
             return res.status(400).json({ error: 'Email and role are required' });
@@ -100,6 +100,12 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
         let query = 'UPDATE "User" SET email = $1, role = $2, "counterpartyId" = $3, "organizationId" = $4';
         let values: any[] = [email, role, counterpartyId || null, organizationId || null];
         let paramIndex = 5;
+
+        if (warehouseId !== undefined) {
+            query += `, "warehouseId" = $${paramIndex}`;
+            values.push(warehouseId || null);
+            paramIndex++;
+        }
 
         if (preferences !== undefined) {
             query += `, preferences = $${paramIndex}`;

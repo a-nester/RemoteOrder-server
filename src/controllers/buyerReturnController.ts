@@ -5,9 +5,11 @@ export class BuyerReturnController {
     // GET /api/buyer-returns
     static async getAll(req: any, res: any) {
         try {
+            const user = req.user;
             const filters = {
                 startDate: req.query.startDate,
-                endDate: req.query.endDate
+                endDate: req.query.endDate,
+                warehouseId: user && user.role !== 'admin' ? user.warehouseId : undefined
             };
             const docs = await BuyerReturnService.getAll(filters);
             res.json(docs);
@@ -32,8 +34,15 @@ export class BuyerReturnController {
     // POST /api/buyer-returns
     static async create(req: any, res: any) {
         try {
+            const user = req.user;
             const userId = req.user?.id || 'system';
-            const doc = await BuyerReturnService.create(req.body, userId);
+            
+            let data = req.body;
+            if (user && user.role !== 'admin' && user.warehouseId) {
+                data.warehouseId = user.warehouseId;
+            }
+
+            const doc = await BuyerReturnService.create(data, userId);
             res.status(201).json(doc);
         } catch (error) {
             console.error('Create BuyerReturn error:', error);
@@ -44,7 +53,13 @@ export class BuyerReturnController {
     // PUT /api/buyer-returns/:id
     static async update(req: any, res: any) {
         try {
-            const doc = await BuyerReturnService.update(req.params.id, req.body);
+            const user = req.user;
+            let data = req.body;
+            if (user && user.role !== 'admin' && user.warehouseId) {
+                data.warehouseId = user.warehouseId;
+            }
+
+            const doc = await BuyerReturnService.update(req.params.id, data);
             res.json(doc);
         } catch (error: any) {
             console.error('Update BuyerReturn error:', error);
