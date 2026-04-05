@@ -373,6 +373,11 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                     ri."productId"::text as "productId",
                     ri.quantity as "netQty",
                     ri.total as "netAmount",
+                    COALESCE((
+                        SELECT SUM(rib.quantity * rib."enterPrice")
+                        FROM "RealizationItemBatch" rib
+                        WHERE rib."realizationItemId" = ri.id
+                    ), 0) as "netPurchaseCost",
                     ri.total - COALESCE((
                         SELECT SUM(rib.quantity * rib."enterPrice")
                         FROM "RealizationItemBatch" rib
@@ -391,6 +396,13 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                     bri."productId"::text as "productId",
                     -bri.quantity as "netQty",
                     -bri.total as "netAmount",
+                    -(COALESCE((
+                        SELECT pb."enterPrice"
+                        FROM "BuyerReturnItemBatch" brib
+                        JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
+                        WHERE brib."buyerReturnItemId" = bri.id
+                        LIMIT 1
+                    ), 0) * bri.quantity) as "netPurchaseCost",
                     (COALESCE((
                         SELECT pb."enterPrice"
                         FROM "BuyerReturnItemBatch" brib
@@ -411,6 +423,7 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                 ${groupBySalesType === 'true' ? 'bi."salesType",' : ''}
                 SUM(bi."netQty") as "totalQuantity",
                 SUM(bi."netAmount") as "totalAmount",
+                SUM(bi."netPurchaseCost") as "totalPurchaseCost",
                 SUM(bi."netProfit") as "totalProfit"
             FROM BaseItems bi
             LEFT JOIN "Product" p ON p.id::text = bi."productId"
