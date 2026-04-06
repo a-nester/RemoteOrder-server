@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import pool from '../db.js';
 
 dotenv.config();
 
@@ -11,7 +12,7 @@ export interface AuthRequest extends Request {
     user?: any;
 }
 
-export const adminAuth = (req: AuthRequest, res: Response, next: NextFunction) => {
+export const adminAuth = async (req: AuthRequest, res: Response, next: NextFunction) => {
     // 1. Try JWT
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -19,10 +20,17 @@ export const adminAuth = (req: AuthRequest, res: Response, next: NextFunction) =
         if (token) {
             try {
                 const decoded = jwt.verify(token, JWT_SECRET) as any;
+                if (decoded && decoded.id) {
+                    const dbRes = await pool.query('SELECT role, "warehouseId" FROM "User" WHERE id = $1', [decoded.id]);
+                    if (dbRes.rowCount && dbRes.rowCount > 0) {
+                        decoded.role = dbRes.rows[0].role;
+                        decoded.warehouseId = dbRes.rows[0].warehouseId;
+                    }
+                }
                 if (decoded && decoded.warehouseId) {
                     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
                     if (!uuidRegex.test(decoded.warehouseId)) {
-                        decoded.warehouseId = '00000000-0000-0000-0000-000000000000';
+                        decoded.warehouseId = null;
                     }
                 }
                 if (decoded.role === 'admin' || decoded.role === 'manager') {
@@ -45,7 +53,7 @@ export const adminAuth = (req: AuthRequest, res: Response, next: NextFunction) =
     return res.status(403).json({ error: 'Access denied. Valid token or admin secret required.' });
 };
 
-export const userAuth = (req: AuthRequest, res: Response, next: NextFunction) => {
+export const userAuth = async (req: AuthRequest, res: Response, next: NextFunction) => {
     let token: string | undefined = '';
     const authHeader = req.headers.authorization;
     
@@ -59,10 +67,17 @@ export const userAuth = (req: AuthRequest, res: Response, next: NextFunction) =>
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET) as any;
+        if (decoded && decoded.id) {
+            const dbRes = await pool.query('SELECT role, "warehouseId" FROM "User" WHERE id = $1', [decoded.id]);
+            if (dbRes.rowCount && dbRes.rowCount > 0) {
+                decoded.role = dbRes.rows[0].role;
+                decoded.warehouseId = dbRes.rows[0].warehouseId;
+            }
+        }
         if (decoded && decoded.warehouseId) {
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             if (!uuidRegex.test(decoded.warehouseId)) {
-                decoded.warehouseId = '00000000-0000-0000-0000-000000000000';
+                decoded.warehouseId = null;
             }
         }
         req.user = decoded;

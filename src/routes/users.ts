@@ -59,7 +59,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 // CREATE new user
 router.post('/', async (req: AuthRequest, res: Response) => {
     try {
-        let { email, password, role, counterpartyId, organizationId, warehouseId } = req.body;
+        let { email, password, role, counterpartyId, organizationId, warehouseId } = req.body as any;
         
         if (!email || !password || !role) {
             return res.status(400).json({ error: 'Email, password, and role are required' });
@@ -96,7 +96,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 router.put('/:id', async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        let { email, role, password, counterpartyId, organizationId, warehouseId, preferences } = req.body;
+        let { email, role, password, counterpartyId, organizationId, warehouseId, preferences } = req.body as any;
 
         if (!email || !role) {
             return res.status(400).json({ error: 'Email and role are required' });
