@@ -248,6 +248,20 @@ router.post('/orders', userAuth, async (req: Request, res: Response) => {
             warehouseId = user.warehouseId;
         }
 
+        // Fallback for admins or missing warehouse
+        if (!warehouseId) {
+            if (counterpartyId) {
+                const cpRes = await client.query('SELECT "warehouseId" FROM "Counterparty" WHERE id = $1', [counterpartyId]);
+                if ((cpRes.rowCount || 0) > 0 && cpRes.rows[0].warehouseId) {
+                    warehouseId = cpRes.rows[0].warehouseId;
+                }
+            }
+            if (!warehouseId) {
+                const whRes = await client.query('SELECT id FROM "Warehouse" ORDER BY "createdAt" ASC LIMIT 1');
+                if ((whRes.rowCount || 0) > 0) warehouseId = whRes.rows[0].id;
+            }
+        }
+
         // If using admin secret (legacy), user.id might be undefined.
         // Use a placeholder UUID for system admin actions.
         // If using admin secret (legacy) or if ID is missing for some reason,
