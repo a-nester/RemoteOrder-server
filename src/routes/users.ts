@@ -59,10 +59,15 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 // CREATE new user
 router.post('/', async (req: AuthRequest, res: Response) => {
     try {
-        const { email, password, role, counterpartyId, organizationId, warehouseId } = req.body;
+        let { email, password, role, counterpartyId, organizationId, warehouseId } = req.body;
         
         if (!email || !password || !role) {
             return res.status(400).json({ error: 'Email, password, and role are required' });
+        }
+        
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (warehouseId && !uuidRegex.test(warehouseId)) {
+            warehouseId = null;
         }
 
         // Check if exists
@@ -91,10 +96,15 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 router.put('/:id', async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const { email, role, password, counterpartyId, organizationId, warehouseId, preferences } = req.body;
+        let { email, role, password, counterpartyId, organizationId, warehouseId, preferences } = req.body;
 
         if (!email || !role) {
             return res.status(400).json({ error: 'Email and role are required' });
+        }
+        
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (warehouseId && !uuidRegex.test(warehouseId)) {
+            warehouseId = null;
         }
 
         let query = 'UPDATE "User" SET email = $1, role = $2, "counterpartyId" = $3, "organizationId" = $4';

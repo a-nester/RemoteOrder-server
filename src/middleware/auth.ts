@@ -19,6 +19,12 @@ export const adminAuth = (req: AuthRequest, res: Response, next: NextFunction) =
         if (token) {
             try {
                 const decoded = jwt.verify(token, JWT_SECRET) as any;
+                if (decoded && decoded.warehouseId) {
+                    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                    if (!uuidRegex.test(decoded.warehouseId)) {
+                        decoded.warehouseId = '00000000-0000-0000-0000-000000000000';
+                    }
+                }
                 if (decoded.role === 'admin' || decoded.role === 'manager') {
                     req.user = decoded;
                     return next();
@@ -52,7 +58,13 @@ export const userAuth = (req: AuthRequest, res: Response, next: NextFunction) =>
     if (!token) return res.status(401).json({ error: 'Token missing or Authorization header required' });
 
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        if (decoded && decoded.warehouseId) {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(decoded.warehouseId)) {
+                decoded.warehouseId = '00000000-0000-0000-0000-000000000000';
+            }
+        }
         req.user = decoded;
         return next();
     } catch (e) {
