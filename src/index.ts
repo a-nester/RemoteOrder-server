@@ -101,6 +101,7 @@ import { runMigration as createSupplierReturnsMigration } from './migrations/add
 import { runMigration as createDocumentLockMigration } from './migrations/100_document_lock.js';
 import { runMigration as backfillBuyerReturnBatchMigration } from './migrations/15_backfill_buyer_return_batch.js';
 import { runMigration as addWarehouseToDocumentsMigration } from './migrations/add_warehouse_to_documents.js';
+import { runMigration as backfillWarehouseMigration } from './migrations/backfill_warehouse.js';
 
 const start = async () => {
   try {
@@ -121,6 +122,7 @@ const start = async () => {
     await createDocumentLockMigration();
     await backfillBuyerReturnBatchMigration();
     await addWarehouseToDocumentsMigration();
+    await backfillWarehouseMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
