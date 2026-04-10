@@ -388,8 +388,9 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
                     -bri.quantity as "netQty",
                     -bri.total as "netAmount",
                     -COALESCE((
-                        SELECT SUM(brb.quantity * brb."enterPrice")
+                        SELECT SUM(brb.quantity * pb."enterPrice")
                         FROM "BuyerReturnItemBatch" brb
+                        JOIN "ProductBatch" pb ON pb.id = brb."productBatchId"
                         WHERE brb."buyerReturnItemId" = bri.id
                     ), 0) as "netPurchaseCost"
                 FROM "BuyerReturn" br
