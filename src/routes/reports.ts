@@ -404,7 +404,7 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
                 SUM(bi."netAmount" - bi."netPurchaseCost") as "profit",
                 CASE WHEN SUM(bi."netQty") > 0 THEN SUM(bi."netAmount") / SUM(bi."netQty") ELSE 0 END as "averagePrice"
             FROM BaseItems bi
-            LEFT JOIN "Product" p ON bi."productId" = p.id
+            LEFT JOIN "Product" p ON bi."productId" = p.id::text
             GROUP BY p.name, p.unit
             ORDER BY "quantity" DESC NULLS LAST
         `;
