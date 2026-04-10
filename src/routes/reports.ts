@@ -325,6 +325,98 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
     }
 });
 
+// GET /api/reports/sales/by-client/details
+router.get('/sales/by-client/details', async (req: Request, res: Response) => {
+    try {
+        const { dateFrom, dateTo, clientId, salesType } = req.query;
+        if (!clientId) return res.status(400).json({ error: 'clientId is required' });
+
+        const user = (req as AuthRequest).user;
+        let params: any[] = [];
+        let rFilters = '';
+        let brFilters = '';
+
+        if (user && user.role !== 'admin' && user.warehouseId) {
+            rFilters += ` AND r."warehouseId" = $${params.length + 1}`;
+            brFilters += ` AND br."warehouseId" = $${params.length + 1}`;
+            params.push(user.warehouseId);
+        }
+
+        rFilters += ` AND r."counterpartyId" = $${params.length + 1}`;
+        brFilters += ` AND br."counterpartyId" = $${params.length + 1}`;
+        params.push(clientId);
+
+        if (dateFrom && dateTo) {
+            rFilters += ` AND r.date >= $${params.length + 1}::date AND r.date < ($${params.length + 2}::date + interval '1 day')`;
+            brFilters += ` AND br.date >= $${params.length + 1}::date AND br.date < ($${params.length + 2}::date + interval '1 day')`;
+            params.push(dateFrom, dateTo);
+        } else if (dateFrom) {
+            rFilters += ` AND r.date >= $${params.length + 1}::date`;
+            brFilters += ` AND br.date >= $${params.length + 1}::date`;
+            params.push(dateFrom);
+        } else if (dateTo) {
+            rFilters += ` AND r.date < ($${params.length + 1}::date + interval '1 day')`;
+            brFilters += ` AND br.date < ($${params.length + 1}::date + interval '1 day')`;
+            params.push(dateTo);
+        }
+
+        if (salesType) {
+            rFilters += ` AND r."salesType" = $${params.length + 1}`;
+            brFilters += ` AND FALSE`; // returns do not match salesType directly unless tracked
+            params.push(salesType);
+        }
+
+        const query = `
+            WITH BaseItems AS (
+                SELECT 
+                    ri."productId"::text as "productId",
+                    ri.quantity as "netQty",
+                    ri.total as "netAmount",
+                    COALESCE((
+                        SELECT SUM(rib.quantity * rib."enterPrice")
+                        FROM "RealizationItemBatch" rib
+                        WHERE rib."realizationItemId" = ri.id
+                    ), 0) as "netPurchaseCost"
+                FROM "Realization" r
+                JOIN "RealizationItem" ri ON r.id = ri."realizationId"
+                WHERE r.status = 'POSTED' ${rFilters}
+                
+                UNION ALL
+                
+                SELECT 
+                    bri."productId"::text as "productId",
+                    -bri.quantity as "netQty",
+                    -bri.total as "netAmount",
+                    -COALESCE((
+                        SELECT SUM(brb.quantity * brb."enterPrice")
+                        FROM "BuyerReturnBatch" brb
+                        WHERE brb."buyerReturnItemId" = bri.id
+                    ), 0) as "netPurchaseCost"
+                FROM "BuyerReturn" br
+                JOIN "BuyerReturnItem" bri ON br.id = bri."buyerReturnId"
+                WHERE br.status = 'POSTED' ${brFilters}
+            )
+            SELECT 
+                p.name as "productName",
+                p.unit,
+                SUM(bi."netQty") as "quantity",
+                SUM(bi."netAmount") as "amount",
+                SUM(bi."netAmount" - bi."netPurchaseCost") as "profit",
+                CASE WHEN SUM(bi."netQty") > 0 THEN SUM(bi."netAmount") / SUM(bi."netQty") ELSE 0 END as "averagePrice"
+            FROM BaseItems bi
+            LEFT JOIN "Product" p ON bi."productId" = p.id
+            GROUP BY p.name, p.unit
+            ORDER BY "quantity" DESC NULLS LAST
+        `;
+
+        const result = await pool.query(query, params);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching sales by client details:', error);
+        res.status(500).json({ error: 'Failed to fetch sales by client details' });
+    }
+});
+
 // GET /api/reports/sales/by-product
 router.get('/sales/by-product', async (req: Request, res: Response) => {
     try {
