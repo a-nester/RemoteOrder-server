@@ -51,7 +51,9 @@ router.post('/login', async (req: Request, res: Response) => {
                 id: user.id,
                 email: user.email,
                 role: user.role,
-                warehouseId: user.warehouseId
+                warehouseId: user.warehouseId,
+                preferences: user.preferences,
+                permissions: user.permissions
             }
         });
 
