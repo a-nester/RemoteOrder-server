@@ -47,7 +47,7 @@ router.use(userAuth, requireAdmin);
 router.get('/', async (req: AuthRequest, res: Response) => {
     try {
         const result = await pool.query(
-            'SELECT id, email, role, "warehouseId", "organizationId", "counterpartyId", "preferences", "createdAt", "updatedAt" FROM "User" ORDER BY email ASC'
+            'SELECT id, email, role, "warehouseId", "organizationId", "counterpartyId", "preferences", "permissions", "createdAt", "updatedAt" FROM "User" ORDER BY email ASC'
         );
         res.json(result.rows);
     } catch (error) {
@@ -59,7 +59,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 // CREATE new user
 router.post('/', async (req: AuthRequest, res: Response) => {
     try {
-        let { email, password, role, counterpartyId, organizationId, warehouseId } = req.body as any;
+        let { email, password, role, counterpartyId, organizationId, warehouseId, permissions } = req.body as any;
         
         if (!email || !password || !role) {
             return res.status(400).json({ error: 'Email, password, and role are required' });
@@ -79,10 +79,10 @@ router.post('/', async (req: AuthRequest, res: Response) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         
         const result = await pool.query(
-            `INSERT INTO "User" (email, password, role, "counterpartyId", "organizationId", "warehouseId", preferences) 
-             VALUES ($1, $2, $3, $4, $5, $6, '{}') 
-             RETURNING id, email, role, "warehouseId", "counterpartyId", "organizationId", preferences`,
-            [email, hashedPassword, role, counterpartyId || null, organizationId || null, warehouseId || null]
+            `INSERT INTO "User" (email, password, role, "counterpartyId", "organizationId", "warehouseId", preferences, permissions) 
+             VALUES ($1, $2, $3, $4, $5, $6, '{}', $7) 
+             RETURNING id, email, role, "warehouseId", "counterpartyId", "organizationId", preferences, permissions`,
+            [email, hashedPassword, role, counterpartyId || null, organizationId || null, warehouseId || null, permissions || {}]
         );
 
         res.status(201).json(result.rows[0]);
@@ -96,7 +96,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 router.put('/:id', async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        let { email, role, password, counterpartyId, organizationId, warehouseId, preferences } = req.body as any;
+        let { email, role, password, counterpartyId, organizationId, warehouseId, preferences, permissions } = req.body as any;
 
         if (!email || !role) {
             return res.status(400).json({ error: 'Email and role are required' });
@@ -123,6 +123,12 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
             paramIndex++;
         }
 
+        if (permissions !== undefined) {
+            query += `, permissions = $${paramIndex}`;
+            values.push(permissions);
+            paramIndex++;
+        }
+
         if (password) {
             const hashedPassword = await bcrypt.hash(password, 10);
             query += `, password = $${paramIndex}`;
@@ -133,7 +139,7 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
         query += ` WHERE id = $${paramIndex}`;
         values.push(id);
 
-        query += ' RETURNING id, email, role, "warehouseId", "counterpartyId", "organizationId", preferences';
+        query += ' RETURNING id, email, role, "warehouseId", "counterpartyId", "organizationId", preferences, permissions';
 
         const result = await pool.query(query, values);
 
