@@ -31,30 +31,35 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
         }
 
         const query = `
-            WITH BatchBalances AS (
+            WITH RealizationBatchOut AS (
+                SELECT rib."productBatchId"::text, SUM(rib.quantity) as outgoing_qty
+                FROM "RealizationItemBatch" rib
+                JOIN "RealizationItem" ri ON ri.id = rib."realizationItemId"
+                JOIN "Realization" r ON r.id = ri."realizationId"
+                WHERE r."date" < ($1::date + interval '1 day') AND r.status = 'POSTED'
+                GROUP BY rib."productBatchId"::text
+            ),
+            SupplierReturnBatchOut AS (
+                SELECT srib."productBatchId"::text, SUM(srib.quantity) as outgoing_qty
+                FROM "SupplierReturnItemBatch" srib
+                JOIN "SupplierReturnItem" sri ON sri.id = srib."supplierReturnItemId"
+                JOIN "SupplierReturn" sr ON sr.id = sri."supplierReturnId"
+                WHERE sr."date" < ($1::date + interval '1 day') AND sr.status = 'POSTED'
+                GROUP BY srib."productBatchId"::text
+            ),
+            BatchBalances AS (
                 SELECT 
                     pb.id as batch_id,
                     pb."productId",
                     COALESCE(gr."warehouseId", br."warehouseId") as "warehouseId",
                     pb."enterPrice",
                     CASE WHEN COALESCE(gr."date", br."date") < ($1::date + interval '1 day') THEN pb."quantityTotal" ELSE 0 END as incoming,
-                    COALESCE(
-                        (SELECT SUM(rib.quantity) 
-                         FROM "RealizationItemBatch" rib 
-                         JOIN "RealizationItem" ri ON ri.id = rib."realizationItemId"
-                         JOIN "Realization" r ON r.id = ri."realizationId"
-                         WHERE rib."productBatchId"::text = pb.id::text AND r."date" < ($1::date + interval '1 day')
-                        ), 0) +
-                    COALESCE(
-                        (SELECT SUM(srib.quantity) 
-                         FROM "SupplierReturnItemBatch" srib
-                         JOIN "SupplierReturnItem" sri ON sri.id = srib."supplierReturnItemId"
-                         JOIN "SupplierReturn" sr ON sr.id = sri."supplierReturnId"
-                         WHERE srib."productBatchId"::text = pb.id::text AND sr."date" < ($1::date + interval '1 day')
-                        ), 0) as outgoing
+                    COALESCE(rbo.outgoing_qty, 0) + COALESCE(srbo.outgoing_qty, 0) as outgoing
                 FROM "ProductBatch" pb
                 LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
                 LEFT JOIN "BuyerReturn" br ON br.id::text = pb."buyerReturnId"::text
+                LEFT JOIN RealizationBatchOut rbo ON rbo."productBatchId" = pb.id::text
+                LEFT JOIN SupplierReturnBatchOut srbo ON srbo."productBatchId" = pb.id::text
                 WHERE 1=1 ${warehouseFilter}
             )
             SELECT 
