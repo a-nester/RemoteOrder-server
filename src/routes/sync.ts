@@ -151,13 +151,15 @@ router.post('/sync/push', async (req: Request, res: Response) => {
               // Delete old items first to prevent duplication on Upsert
               await client.query('DELETE FROM "OrderItem" WHERE "orderId" = $1', [id]);
               
-              for (const item of data.items) {
-                // Create Normalized OrderItem
-                await client.query(
-                  `INSERT INTO "OrderItem" ("id", "orderId", "productId", "quantity", "sellPrice", "createdAt")
-                         VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())`,
-                  [id, item.id, item.count, item.price]
-                );
+              if (data.items && Array.isArray(data.items)) {
+                for (const [index, item] of data.items.entries()) {
+                  // Create Normalized OrderItem
+                  await client.query(
+                    `INSERT INTO "OrderItem" ("id", "orderId", "productId", "quantity", "sellPrice", "sortOrder", "createdAt")
+                           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())`,
+                    [id, item.id, item.count, item.price, index]
+                  );
+                }
               }
             }
 

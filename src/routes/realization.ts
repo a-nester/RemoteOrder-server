@@ -71,6 +71,7 @@ router.get('/:id', userAuth, async (req, res) => {
             FROM "RealizationItem" ri
             LEFT JOIN "Product" p ON ri."productId" = p.id::text -- Cast for compatibility if product id is distinct type
             WHERE ri."realizationId" = $1
+            ORDER BY ri."sortOrder" ASC NULLS LAST, ri."createdAt" ASC
         `, [id]);
 
         res.json({
@@ -115,16 +116,17 @@ router.post('/', userAuth, async (req, res) => {
 
         // Insert Items
         if (items && Array.isArray(items)) {
-            for (const item of items) {
+            for (const [index, item] of items.entries()) {
                 await client.query(`
-                    INSERT INTO "RealizationItem" ("realizationId", "productId", "quantity", "price", "total")
-                    VALUES ($1, $2, $3, $4, $5)
+                    INSERT INTO "RealizationItem" ("realizationId", "productId", "quantity", "price", "total", "sortOrder")
+                    VALUES ($1, $2, $3, $4, $5, $6)
                 `, [
                     realizationId,
                     item.productId,
                     item.quantity,
                     item.sellPrice || item.price,
-                    item.total
+                    item.total,
+                    index
                 ]);
             }
         }
@@ -153,9 +155,21 @@ router.post('/from-order/:orderId', userAuth, async (req, res) => {
         if ((orderRes.rowCount || 0) === 0) throw new Error('Order not found');
         const order = orderRes.rows[0];
 
-        // 2. Fetch Order Items
-        const itemsRes = await client.query('SELECT * FROM "OrderItem" WHERE "orderId" = $1', [orderId]);
-        const items = itemsRes.rows;
+        // 2. Fetch Order Items in specific order. JSON array in Order preserves insertion order.
+        let items: any[] = [];
+        const rawItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+        
+        if (rawItems && Array.isArray(rawItems) && rawItems.length > 0) {
+            items = rawItems.map((i: any) => ({
+                productId: i.productId || i.id,
+                quantity: i.quantity !== undefined ? i.quantity : i.count,
+                sellPrice: i.sellPrice !== undefined ? i.sellPrice : i.price
+            }));
+        } else {
+            // Fallback to table if JSON doesn't exist
+            const itemsRes = await client.query('SELECT * FROM "OrderItem" WHERE "orderId" = $1', [orderId]);
+            items = itemsRes.rows;
+        }
 
         // 3. Determine Warehouse and Sales Type (from Counterparty or Default)
         // Check Counterparty for default warehouse and salesType
@@ -195,16 +209,17 @@ router.post('/from-order/:orderId', userAuth, async (req, res) => {
         const realizationId = realizationRes.rows[0].id;
 
         // 6. Create Realization Items
-        for (const item of items) {
+        for (const [index, item] of items.entries()) {
             await client.query(`
-                INSERT INTO "RealizationItem" ("realizationId", "productId", "quantity", "price", "total")
-                VALUES ($1, $2, $3, $4, $5)
+                INSERT INTO "RealizationItem" ("realizationId", "productId", "quantity", "price", "total", "sortOrder")
+                VALUES ($1, $2, $3, $4, $5, $6)
             `, [
                 realizationId,
                 item.productId,
                 item.quantity,
                 item.sellPrice,
-                Number(item.quantity) * Number(item.sellPrice)
+                Number(item.quantity) * Number(item.sellPrice),
+                index
             ]);
         }
 
@@ -250,11 +265,11 @@ router.put('/:id', userAuth, async (req, res) => {
         // If items are provided, wipe and recreate (easier than delta patching)
         if (items && Array.isArray(items)) {
             await client.query('DELETE FROM "RealizationItem" WHERE "realizationId" = $1', [id]);
-            for (const item of items) {
+            for (const [index, item] of items.entries()) {
                 await client.query(`
-                    INSERT INTO "RealizationItem" ("realizationId", "productId", "quantity", "price", "total")
-                    VALUES ($1, $2, $3, $4, $5)
-                `, [id, item.productId, item.quantity, item.sellPrice || item.price, item.total]);
+                    INSERT INTO "RealizationItem" ("realizationId", "productId", "quantity", "price", "total", "sortOrder")
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                `, [id, item.productId, item.quantity, item.sellPrice || item.price, item.total, index]);
             }
         }
 
