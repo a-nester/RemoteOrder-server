@@ -277,9 +277,16 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
         }
 
         if (salesType) {
-            rFilters += ` AND r."salesType" = $${params.length + 1}`;
-            brFilters += ` AND FALSE`; // Exclude returns if specific salesType is requested
-            params.push(salesType);
+            if (salesType === 'Повернення') {
+                rFilters += ` AND FALSE`;
+            } else if (salesType === 'Не визначено') {
+                rFilters += ` AND (r."salesType" IS NULL OR r."salesType" = '')`;
+                brFilters += ` AND FALSE`;
+            } else {
+                rFilters += ` AND r."salesType" = $${params.length + 1}`;
+                brFilters += ` AND FALSE`;
+                params.push(salesType);
+            }
         }
 
         const query = `
@@ -289,7 +296,7 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                     r.id,
                     r.amount as "netAmount",
                     r.profit as "netProfit",
-                    ${groupBySalesType === 'true' ? 'r."salesType"' : "'' as \"salesType\""}
+                    ${groupBySalesType === 'true' ? 'COALESCE(NULLIF(r."salesType", \'\'), \'Не визначено\')' : "''"} as "salesType"
                 FROM "Realization" r
                 LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
                 WHERE r.status = 'POSTED' ${rFilters}
@@ -301,7 +308,7 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                     br.id,
                     -br."totalAmount" as "netAmount",
                     br.profit as "netProfit", -- BuyerReturn profit is already saved as negative
-                    '' as "salesType"
+                    'Повернення' as "salesType"
                 FROM "BuyerReturn" br
                 LEFT JOIN "Counterparty" c ON br."counterpartyId" = c.id
                 WHERE br.status = 'POSTED' ${brFilters}
@@ -366,9 +373,16 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
         }
 
         if (salesType) {
-            rFilters += ` AND r."salesType" = $${params.length + 1}`;
-            brFilters += ` AND FALSE`; // returns do not match salesType directly unless tracked
-            params.push(salesType);
+            if (salesType === 'Повернення') {
+                rFilters += ` AND FALSE`;
+            } else if (salesType === 'Не визначено') {
+                rFilters += ` AND (r."salesType" IS NULL OR r."salesType" = '')`;
+                brFilters += ` AND FALSE`;
+            } else {
+                rFilters += ` AND r."salesType" = $${params.length + 1}`;
+                brFilters += ` AND FALSE`;
+                params.push(salesType);
+            }
         }
 
         const query = `
@@ -459,9 +473,16 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
         }
 
         if (salesType) {
-            rFilters += ` AND r."salesType" = $${params.length + 1}`;
-            brFilters += ` AND FALSE`; // Exclude returns if specific salesType is requested
-            params.push(salesType);
+            if (salesType === 'Повернення') {
+                rFilters += ` AND FALSE`;
+            } else if (salesType === 'Не визначено') {
+                rFilters += ` AND (r."salesType" IS NULL OR r."salesType" = '')`;
+                brFilters += ` AND FALSE`;
+            } else {
+                rFilters += ` AND r."salesType" = $${params.length + 1}`;
+                brFilters += ` AND FALSE`;
+                params.push(salesType);
+            }
         }
 
         const query = `
@@ -481,7 +502,7 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                         FROM "RealizationItemBatch" rib
                         WHERE rib."realizationItemId" = ri.id
                     ), 0) as "netProfit",
-                    ${groupBySalesType === 'true' ? 'r."salesType"' : "'' as \"salesType\""}
+                    ${groupBySalesType === 'true' ? 'COALESCE(NULLIF(r."salesType", \'\'), \'Не визначено\')' : "''"} as "salesType"
                 FROM "RealizationItem" ri
                 JOIN "Realization" r ON r.id = ri."realizationId"
                 LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
@@ -508,7 +529,7 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                         WHERE brib."buyerReturnItemId" = bri.id
                         LIMIT 1
                     ), 0) * bri.quantity) - bri.total as "netProfit",
-                    '' as "salesType"
+                    'Повернення' as "salesType"
                 FROM "BuyerReturnItem" bri
                 JOIN "BuyerReturn" br ON br.id = bri."buyerReturnId"
                 LEFT JOIN "Counterparty" c ON br."counterpartyId" = c.id
