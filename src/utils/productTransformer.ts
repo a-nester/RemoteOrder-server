@@ -4,6 +4,9 @@ export interface Product {
     unit: string;
     category: string;
     inBox?: number | null;
+    barcode?: string | null;
+    packing?: string | null;
+    tara?: string | null;
     prices?: any; // internal use
     price?: number; // external use
     photos?: string[];

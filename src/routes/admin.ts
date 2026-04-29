@@ -35,7 +35,7 @@ router.use(adminAuth);
 // ➕ Create Product
 router.post('/products', upload.array('photos', 5), async (req: Request, res: Response) => {
     try {
-        const { name, unit, category, prices, inBox } = req.body;
+        const { name, unit, category, prices, inBox, barcode, packing, tara } = req.body;
         const files = (req as any).files as any[] || [];
         const photoUrls = files ? files.map((file: any) => `/uploads/${file.filename}`) : [];
 
@@ -50,10 +50,10 @@ router.post('/products', upload.array('photos', 5), async (req: Request, res: Re
         }
 
         const result = await pool.query(
-            `INSERT INTO "Product" ("name", "unit", "category", "prices", "photos", "inBox")
-       VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO "Product" ("name", "unit", "category", "prices", "photos", "inBox", "barcode", "packing", "tara")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
-            [name, unit, category, JSON.stringify(parsedPrices), photoUrls, inBox || null]
+            [name, unit, category, JSON.stringify(parsedPrices), photoUrls, inBox || null, barcode || null, packing || null, tara || null]
         );
         const newProduct = result.rows[0];
 
@@ -86,7 +86,7 @@ router.post('/products', upload.array('photos', 5), async (req: Request, res: Re
 router.put('/products/:id', upload.array('photos', 5), async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { name, unit, category, prices, existingPhotos, inBox } = req.body;
+        const { name, unit, category, prices, existingPhotos, inBox, barcode, packing, tara } = req.body;
         const files = (req as any).files as any[] || [];
 
         const newPhotoUrls = files ? files.map((file: any) => `/uploads/${file.filename}`) : [];
@@ -152,17 +152,17 @@ router.put('/products/:id', upload.array('photos', 5), async (req: Request, res:
         if (updatePhotos) {
             dbResult = await pool.query(`
             UPDATE "Product"
-            SET "name" = $2, "unit" = $3, "category" = $4, "prices" = $5, "photos" = $6, "inBox" = $7, "updatedAt" = NOW()
+            SET "name" = $2, "unit" = $3, "category" = $4, "prices" = $5, "photos" = $6, "inBox" = $7, "barcode" = $8, "packing" = $9, "tara" = $10, "updatedAt" = NOW()
             WHERE "id" = $1 RETURNING *`,
-                [id, name, unit, category, JSON.stringify(parsedPrices), finalPhotos, inBox || null]
+                [id, name, unit, category, JSON.stringify(parsedPrices), finalPhotos, inBox || null, barcode || null, packing || null, tara || null]
             );
         } else {
             // Don't update photos
             dbResult = await pool.query(`
             UPDATE "Product"
-            SET "name" = $2, "unit" = $3, "category" = $4, "prices" = $5, "inBox" = $6, "updatedAt" = NOW()
+            SET "name" = $2, "unit" = $3, "category" = $4, "prices" = $5, "inBox" = $6, "barcode" = $7, "packing" = $8, "tara" = $9, "updatedAt" = NOW()
             WHERE "id" = $1 RETURNING *`,
-                [id, name, unit, category, JSON.stringify(parsedPrices), inBox || null]
+                [id, name, unit, category, JSON.stringify(parsedPrices), inBox || null, barcode || null, packing || null, tara || null]
             );
         }
 
