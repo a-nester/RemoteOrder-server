@@ -104,6 +104,7 @@ import { runMigration as addWarehouseToDocumentsMigration } from './migrations/a
 import { runMigration as backfillWarehouseMigration } from './migrations/backfill_warehouse.js';
 import { runMigration as addUserPermissionsMigration } from './migrations/101_add_user_permissions.js';
 import { runMigration as addSortOrderMigration } from './migrations/102_add_sort_order.js';
+import { runMigration as addInBoxToProductMigration } from './migrations/104_add_in_box_to_product.js';
 
 const start = async () => {
   try {
@@ -127,6 +128,7 @@ const start = async () => {
     await backfillWarehouseMigration();
     await addUserPermissionsMigration();
     await addSortOrderMigration();
+    await addInBoxToProductMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);

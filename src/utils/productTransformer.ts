@@ -3,6 +3,7 @@ export interface Product {
     name: string;
     unit: string;
     category: string;
+    inBox?: number | null;
     prices?: any; // internal use
     price?: number; // external use
     photos?: string[];
