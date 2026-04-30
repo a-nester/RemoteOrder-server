@@ -105,6 +105,7 @@ import { runMigration as backfillWarehouseMigration } from './migrations/backfil
 import { runMigration as addUserPermissionsMigration } from './migrations/101_add_user_permissions.js';
 import { runMigration as addSortOrderMigration } from './migrations/102_add_sort_order.js';
 import { runMigration as addInBoxToProductMigration } from './migrations/104_add_in_box_to_product.js';
+import { runMigration as addPriceListFieldsMigration } from './migrations/105_add_price_list_fields_to_product.js';
 
 const start = async () => {
   try {
@@ -129,6 +130,7 @@ const start = async () => {
     await addUserPermissionsMigration();
     await addSortOrderMigration();
     await addInBoxToProductMigration();
+    await addPriceListFieldsMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);

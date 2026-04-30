@@ -1,19 +1,24 @@
-import { Pool } from 'pg';
+import pool from '../db.js';
 
-export async function up(pool: Pool) {
-    await pool.query(`
-        ALTER TABLE "Product" 
-        ADD COLUMN IF NOT EXISTS "barcode" TEXT,
-        ADD COLUMN IF NOT EXISTS "packing" TEXT,
-        ADD COLUMN IF NOT EXISTS "tara" TEXT;
-    `);
-}
+export const runMigration = async () => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-export async function down(pool: Pool) {
-    await pool.query(`
-        ALTER TABLE "Product" 
-        DROP COLUMN IF NOT EXISTS "barcode",
-        DROP COLUMN IF NOT EXISTS "packing",
-        DROP COLUMN IF NOT EXISTS "tara";
+    await client.query(`
+      ALTER TABLE "Product"
+      ADD COLUMN IF NOT EXISTS "barcode" TEXT,
+      ADD COLUMN IF NOT EXISTS "packing" TEXT,
+      ADD COLUMN IF NOT EXISTS "tara" TEXT;
     `);
-}
+
+    await client.query('COMMIT');
+    console.log('✅ Migration 105 applied: Added barcode, packing, tara columns to Product table');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('❌ Migration 105 failed:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+};
