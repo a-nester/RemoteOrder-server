@@ -244,7 +244,7 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
 // GET /api/reports/sales/by-client
 router.get('/sales/by-client', async (req: Request, res: Response) => {
     try {
-        const { dateFrom, dateTo, counterparty, groupBySalesType, salesType } = req.query;
+        const { dateFrom, dateTo, counterparty, groupBySalesType, salesType, includeReturns } = req.query;
         const user = (req as AuthRequest).user;
         let params: any[] = [];
         let rFilters = '';
@@ -279,12 +279,15 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
         if (salesType) {
             if (salesType === 'Повернення') {
                 rFilters += ` AND FALSE`;
+                if (includeReturns === 'true') brFilters += ` AND FALSE`;
             } else if (salesType === 'Не визначено') {
                 rFilters += ` AND (r."salesType" IS NULL OR r."salesType" = '')`;
                 brFilters += ` AND FALSE`;
             } else {
                 rFilters += ` AND r."salesType" = $${params.length + 1}`;
-                brFilters += ` AND FALSE`;
+                if (!(includeReturns === 'true' && salesType === 'Готівковий')) {
+                    brFilters += ` AND FALSE`;
+                }
                 params.push(salesType);
             }
         }
@@ -308,7 +311,7 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                     br.id,
                     -br."totalAmount" as "netAmount",
                     br.profit as "netProfit", -- BuyerReturn profit is already saved as negative
-                    'Повернення' as "salesType"
+                    ${includeReturns === 'true' ? "'Готівковий'" : "'Повернення'"} as "salesType"
                 FROM "BuyerReturn" br
                 LEFT JOIN "Counterparty" c ON br."counterpartyId" = c.id
                 WHERE br.status = 'POSTED' ${brFilters}
@@ -440,7 +443,7 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
 // GET /api/reports/sales/by-product
 router.get('/sales/by-product', async (req: Request, res: Response) => {
     try {
-        const { dateFrom, dateTo, counterparty, groupBySalesType, salesType } = req.query;
+        const { dateFrom, dateTo, counterparty, groupBySalesType, salesType, includeReturns } = req.query;
         const user = (req as AuthRequest).user;
         let params: any[] = [];
         let rFilters = '';
@@ -475,12 +478,15 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
         if (salesType) {
             if (salesType === 'Повернення') {
                 rFilters += ` AND FALSE`;
+                if (includeReturns === 'true') brFilters += ` AND FALSE`;
             } else if (salesType === 'Не визначено') {
                 rFilters += ` AND (r."salesType" IS NULL OR r."salesType" = '')`;
                 brFilters += ` AND FALSE`;
             } else {
                 rFilters += ` AND r."salesType" = $${params.length + 1}`;
-                brFilters += ` AND FALSE`;
+                if (!(includeReturns === 'true' && salesType === 'Готівковий')) {
+                    brFilters += ` AND FALSE`;
+                }
                 params.push(salesType);
             }
         }
@@ -529,7 +535,7 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                         WHERE brib."buyerReturnItemId" = bri.id
                         LIMIT 1
                     ), 0) * bri.quantity) - bri.total as "netProfit",
-                    'Повернення' as "salesType"
+                    ${includeReturns === 'true' ? "'Готівковий'" : "'Повернення'"} as "salesType"
                 FROM "BuyerReturnItem" bri
                 JOIN "BuyerReturn" br ON br.id = bri."buyerReturnId"
                 LEFT JOIN "Counterparty" c ON br."counterpartyId" = c.id
