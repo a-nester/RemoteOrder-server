@@ -350,16 +350,11 @@ router.get('/orders', userAuth, async (req: Request, res: Response) => {
         let paramIndex = 1;
 
         if (user && user.role !== 'admin') {
-            if (user.visibleWarehouses && user.visibleWarehouses.length > 0) {
-                query += ` AND o."warehouseId" = ANY($${paramIndex}::uuid[])`;
-                params.push(user.visibleWarehouses);
-                paramIndex++;
-            } else if (user.warehouseId) {
-                query += ` AND o."warehouseId" = $${paramIndex}`;
-                params.push(user.warehouseId);
-                paramIndex++;
-            }
-        }
+            if (user.role === 'manager' && user.warehouseId) {
+            query += ` AND o."warehouseId" = $${paramIndex}`;
+            params.push(user.warehouseId);
+            paramIndex++;
+        }    }
 
         if (includeDeleted !== 'true') {
             query += ` AND (o."isDeleted" = false OR o."isDeleted" IS NULL)`;

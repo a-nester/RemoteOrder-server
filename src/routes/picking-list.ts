@@ -23,12 +23,11 @@ router.get("/", async (req, res) => {
             // Client users have a single warehouseId
             userWarehouseFilter = ` AND "warehouseId" = $${params.length + 1}`;
             params.push(user.warehouseId);
-        } else if (user.role === 'manager' && user.visibleWarehouses && user.visibleWarehouses.length > 0) {
-            // Manager with selected visible warehouses
-            userWarehouseFilter = ` AND "warehouseId" = ANY($${params.length + 1}::uuid[])`;
-            params.push(user.visibleWarehouses);
+        } else if (user.role === 'manager' && user.warehouseId) {
+            // Manager filtered by single warehouseId (if assigned)
+            userWarehouseFilter = ` AND "warehouseId" = $${params.length + 1}`;
+            params.push(user.warehouseId);
         }
-        // If manager has no visibleWarehouses selected, no warehouse filter is applied (show all)
     }
 
     const result = await pool.query(
