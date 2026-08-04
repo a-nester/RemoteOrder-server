@@ -31,11 +31,16 @@ router.get('/all', userAuth, async (req, res) => {
 
 // Create Organization
 router.post('/', userAuth, async (req, res) => {
-    const { name, fullDetails, salesTypes } = req.body;
+    const { name, fullDetails, salesTypes, categories } = req.body;
     try {
         const result = await pool.query(
-            'INSERT INTO "Organization" (name, "fullDetails", "salesTypes", "createdAt", "updatedAt") VALUES ($1, $2, $3, NOW(), NOW()) RETURNING *',
-            [name || 'Нова Організація', fullDetails || null, salesTypes ? JSON.stringify(salesTypes) : JSON.stringify(["Готівковий", "р/р ФОП", "з ПДВ"])]
+            'INSERT INTO "Organization" (name, "fullDetails", "salesTypes", "categories", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, NOW(), NOW()) RETURNING *',
+            [
+                name || 'Нова Організація', 
+                fullDetails || null, 
+                salesTypes ? JSON.stringify(salesTypes) : JSON.stringify(["Готівковий", "р/р ФОП", "з ПДВ"]),
+                categories ? JSON.stringify(categories) : null
+            ]
         );
         res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -66,6 +71,11 @@ router.put('/', userAuth, async (req, res) => {
         if (req.body.salesTypes !== undefined) {
             updates.push(`"salesTypes" = $${paramIndex++}`);
             values.push(JSON.stringify(req.body.salesTypes));
+        }
+
+        if (req.body.categories !== undefined) {
+            updates.push(`"categories" = $${paramIndex++}`);
+            values.push(req.body.categories ? JSON.stringify(req.body.categories) : null);
         }
 
         updates.push(`"updatedAt" = NOW()`);

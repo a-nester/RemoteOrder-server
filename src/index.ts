@@ -107,6 +107,7 @@ import { runMigration as addSortOrderMigration } from './migrations/102_add_sort
 import { runMigration as addInBoxToProductMigration } from './migrations/104_add_in_box_to_product.js';
 import { runMigration as addPriceListFieldsMigration } from './migrations/105_add_price_list_fields_to_product.js';
 import { runMigration as addWeightToProductMigration } from './migrations/106_add_weight_to_product.js';
+import { runMigration as addCategoriesToOrganizationMigration } from './migrations/107_add_categories_to_organization.js';
 
 const start = async () => {
   try {
@@ -133,6 +134,7 @@ const start = async () => {
     await addInBoxToProductMigration();
     await addPriceListFieldsMigration();
     await addWeightToProductMigration();
+    await addCategoriesToOrganizationMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
