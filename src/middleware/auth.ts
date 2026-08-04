@@ -31,7 +31,9 @@ export const adminAuth = async (req: AuthRequest, res: Response, next: NextFunct
                 if (dbRes.rowCount && dbRes.rowCount > 0) {
                     decoded.role = dbRes.rows[0].role;
                     decoded.warehouseId = dbRes.rows[0].warehouseId;
-                    decoded.visibleWarehouses = dbRes.rows[0].visibleWarehouses || [];
+                    if (decoded.role === 'manager') {
+                        decoded.visibleWarehouses = dbRes.rows[0].visibleWarehouses || [];
+                    }
                     decoded.permissions = dbRes.rows[0].permissions || {};
                 }
             }
@@ -75,7 +77,11 @@ export const userAuth = async (req: AuthRequest, res: Response, next: NextFuncti
             const dbRes = await pool.query('SELECT role, "warehouseId", "visibleWarehouses", permissions FROM "User" WHERE id = $1', [decoded.id]);
             if (dbRes.rowCount && dbRes.rowCount > 0) {
                 decoded.role = dbRes.rows[0].role;
-                decoded.visibleWarehouses = dbRes.rows[0].visibleWarehouses || [];
+                if (decoded.role === 'manager') {
+                    decoded.visibleWarehouses = dbRes.rows[0].visibleWarehouses || [];
+                } else {
+                    decoded.visibleWarehouses = [];
+                }
                 decoded.warehouseId = dbRes.rows[0].warehouseId; // keep for legacy
                 decoded.permissions = dbRes.rows[0].permissions || {};
             }
