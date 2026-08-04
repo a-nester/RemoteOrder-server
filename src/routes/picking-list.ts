@@ -18,9 +18,14 @@ router.get("/", async (req, res) => {
     let userWarehouseFilter = '';
     let params: any[] = [dayOfWeek];
 
-    if (user && user.role !== 'admin' && user.warehouseId) {
-        userWarehouseFilter = ` AND "warehouseId" = $2`;
-        params.push(user.warehouseId);
+    if (user && user.role !== 'admin') {
+        if (user.visibleWarehouses && user.visibleWarehouses.length > 0) {
+            userWarehouseFilter = ` AND "warehouseId" = ANY($${params.length + 1}::uuid[])`;
+            params.push(user.visibleWarehouses);
+        } else if (user.warehouseId) {
+            userWarehouseFilter = ` AND "warehouseId" = $${params.length + 1}`;
+            params.push(user.warehouseId);
+        }
     }
 
     const result = await pool.query(
