@@ -18,6 +18,7 @@ async function migrateUsers() {
                 "password" TEXT NOT NULL,
                 "role" TEXT NOT NULL DEFAULT 'client', -- 'admin', 'manager', 'client'
                 "warehouseId" TEXT,
+                "visibleWarehouses" JSONB NOT NULL DEFAULT '[]'::jsonb,
                 "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
                 "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
             );
