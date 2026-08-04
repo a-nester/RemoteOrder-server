@@ -19,13 +19,16 @@ router.get("/", async (req, res) => {
     let params: any[] = [dayOfWeek];
 
     if (user && user.role !== 'admin') {
-        if (user.visibleWarehouses && user.visibleWarehouses.length > 0) {
-            userWarehouseFilter = ` AND "warehouseId" = ANY($${params.length + 1}::uuid[])`;
-            params.push(user.visibleWarehouses);
-        } else if (user.warehouseId) {
+        if (user.role === 'client' && user.warehouseId) {
+            // Client users have a single warehouseId
             userWarehouseFilter = ` AND "warehouseId" = $${params.length + 1}`;
             params.push(user.warehouseId);
+        } else if (user.role === 'manager' && user.visibleWarehouses && user.visibleWarehouses.length > 0) {
+            // Manager with selected visible warehouses
+            userWarehouseFilter = ` AND "warehouseId" = ANY($${params.length + 1}::uuid[])`;
+            params.push(user.visibleWarehouses);
         }
+        // If manager has no visibleWarehouses selected, no warehouse filter is applied (show all)
     }
 
     const result = await pool.query(

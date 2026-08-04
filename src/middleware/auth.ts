@@ -13,41 +13,44 @@ export interface AuthRequest extends Request {
 }
 
 export const adminAuth = async (req: AuthRequest, res: Response, next: NextFunction) => {
-    // 1. Try JWT
+    // Retrieve token from Authorization header or query param
+    let token: string | undefined;
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.split(' ')[1];
-        if (token) {
-            try {
-                const decoded = jwt.verify(token, JWT_SECRET) as any;
-                if (decoded && decoded.id) {
-                    const dbRes = await pool.query('SELECT role, "warehouseId", "visibleWarehouses", permissions FROM "User" WHERE id = $1', [decoded.id]);
-                    if (dbRes.rowCount && dbRes.rowCount > 0) {
-                        decoded.role = dbRes.rows[0].role;
-                        decoded.visibleWarehouses = dbRes.rows[0].visibleWarehouses;
-                        decoded.permissions = dbRes.rows[0].permissions || {};
-                    }
+        token = authHeader.split(' ')[1];
+    } else if (req.query.token && typeof req.query.token === 'string') {
+        token = req.query.token;
+    }
+
+    if (token) {
+        try {
+            const decoded = jwt.verify(token, JWT_SECRET) as any;
+            // Enrich with DB info if needed
+            if (decoded && decoded.id) {
+                const dbRes = await pool.query('SELECT role, "warehouseId", "visibleWarehouses", permissions FROM "User" WHERE id = $1', [decoded.id]);
+                if (dbRes.rowCount && dbRes.rowCount > 0) {
+                    decoded.role = dbRes.rows[0].role;
+                    decoded.warehouseId = dbRes.rows[0].warehouseId;
+                    decoded.visibleWarehouses = dbRes.rows[0].visibleWarehouses || [];
+                    decoded.permissions = dbRes.rows[0].permissions || {};
                 }
-                if (decoded && decoded.warehouseId) {
-                    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-                    if (!uuidRegex.test(decoded.warehouseId)) {
-                        decoded.warehouseId = null;
-                    }
-                }
-                if (decoded.role === 'admin' || decoded.role === 'manager') {
-                    req.user = decoded;
-                    return next();
-                }
-            } catch (e) {
-                // Token invalid, ignore and try legacy secret or fail
             }
+            // Ensure arrays are defined
+            decoded.visibleWarehouses = decoded.visibleWarehouses || [];
+            decoded.permissions = decoded.permissions || {};
+            if (decoded.role === 'admin' || decoded.role === 'manager') {
+                req.user = decoded;
+                return next();
+            }
+        } catch (e) {
+            // Invalid token, continue to secret check
         }
     }
 
-    // 2. Legacy Admin Secret
+    // Legacy admin secret fallback
     const secret = req.headers['x-admin-secret'];
     if (secret && secret === ADMIN_SECRET) {
-        req.user = { role: 'admin' }; // Mock admin user from secret
+        req.user = { role: 'admin', warehouseId: null, visibleWarehouses: [], permissions: {} };
         return next();
     }
 
@@ -72,7 +75,7 @@ export const userAuth = async (req: AuthRequest, res: Response, next: NextFuncti
             const dbRes = await pool.query('SELECT role, "warehouseId", "visibleWarehouses", permissions FROM "User" WHERE id = $1', [decoded.id]);
             if (dbRes.rowCount && dbRes.rowCount > 0) {
                 decoded.role = dbRes.rows[0].role;
-                decoded.visibleWarehouses = dbRes.rows[0].visibleWarehouses;
+                decoded.visibleWarehouses = dbRes.rows[0].visibleWarehouses || [];
                 decoded.warehouseId = dbRes.rows[0].warehouseId; // keep for legacy
                 decoded.permissions = dbRes.rows[0].permissions || {};
             }
