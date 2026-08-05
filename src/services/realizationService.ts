@@ -21,6 +21,14 @@ export class RealizationService {
             let totalCostPrice = 0;
             let totalSellPrice = Number(doc.amount);
 
+            let costMultiplier = 1.0;
+            if (doc.salesType === 'з ПДВ') {
+                const orgRes = await client.query('SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1');
+                if (orgRes.rows.length > 0 && orgRes.rows[0].vatCostCoefficient) {
+                    costMultiplier = Number(orgRes.rows[0].vatCostCoefficient);
+                }
+            }
+
             for (const item of items) {
                 const productId = item.productId;
                 const quantityNeeded = Number(item.quantity);
@@ -33,7 +41,7 @@ export class RealizationService {
                         VALUES ($1, $2, $3, $4)
                     `, [item.id, deduction.batchId, deduction.quantity, deduction.enterPrice]);
 
-                    totalCostPrice += (deduction.quantity * deduction.enterPrice);
+                    totalCostPrice += (deduction.quantity * deduction.enterPrice * costMultiplier);
                 }
             }
 

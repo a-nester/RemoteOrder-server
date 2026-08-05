@@ -31,15 +31,16 @@ router.get('/all', userAuth, async (req, res) => {
 
 // Create Organization
 router.post('/', userAuth, async (req, res) => {
-    const { name, fullDetails, salesTypes, categories } = req.body;
+    const { name, fullDetails, salesTypes, categories, vatCostCoefficient } = req.body;
     try {
         const result = await pool.query(
-            'INSERT INTO "Organization" (name, "fullDetails", "salesTypes", "categories", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, NOW(), NOW()) RETURNING *',
+            'INSERT INTO "Organization" (name, "fullDetails", "salesTypes", "categories", "vatCostCoefficient", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, NOW(), NOW()) RETURNING *',
             [
                 name || 'Нова Організація', 
                 fullDetails || null, 
                 salesTypes ? JSON.stringify(salesTypes) : JSON.stringify(["Готівковий", "р/р ФОП", "з ПДВ"]),
-                categories ? JSON.stringify(categories) : null
+                categories ? JSON.stringify(categories) : null,
+                vatCostCoefficient !== undefined ? Number(vatCostCoefficient) : 1.0
             ]
         );
         res.status(201).json(result.rows[0]);
@@ -51,7 +52,7 @@ router.post('/', userAuth, async (req, res) => {
 
 // Update Organization Details
 router.put('/', userAuth, async (req, res) => {
-    const { id, name, fullDetails } = req.body;
+    const { id, name, fullDetails, vatCostCoefficient } = req.body;
 
     try {
         const updates: string[] = [];
@@ -76,6 +77,11 @@ router.put('/', userAuth, async (req, res) => {
         if (req.body.categories !== undefined) {
             updates.push(`"categories" = $${paramIndex++}`);
             values.push(req.body.categories ? JSON.stringify(req.body.categories) : null);
+        }
+
+        if (vatCostCoefficient !== undefined) {
+            updates.push(`"vatCostCoefficient" = $${paramIndex++}`);
+            values.push(Number(vatCostCoefficient));
         }
 
         updates.push(`"updatedAt" = NOW()`);

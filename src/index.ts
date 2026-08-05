@@ -109,6 +109,7 @@ import { runMigration as addPriceListFieldsMigration } from './migrations/105_ad
 import { runMigration as addWeightToProductMigration } from './migrations/106_add_weight_to_product.js';
 import { runMigration as addCategoriesToOrganizationMigration } from './migrations/107_add_categories_to_organization.js';
 import { runMigration as addVisibleWarehousesMigration } from './migrations/108_add_visible_warehouses.js';
+import { runMigration as addVatCostCoefficientMigration } from './migrations/109_add_vat_cost_coefficient_to_organization.js';
 
 const start = async () => {
   try {
@@ -137,6 +138,7 @@ const start = async () => {
     await addWeightToProductMigration();
     await addCategoriesToOrganizationMigration();
     await addVisibleWarehousesMigration();
+    await addVatCostCoefficientMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);

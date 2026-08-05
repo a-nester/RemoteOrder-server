@@ -395,7 +395,7 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
                     ri.quantity as "netQty",
                     ri.total as "netAmount",
                     COALESCE((
-                        SELECT SUM(rib.quantity * rib."enterPrice")
+                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1), 1.0) ELSE 1.0 END)
                         FROM "RealizationItemBatch" rib
                         WHERE rib."realizationItemId" = ri.id
                     ), 0) as "netPurchaseCost"
@@ -410,7 +410,7 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
                     -bri.quantity as "netQty",
                     -bri.total as "netAmount",
                     -COALESCE((
-                        SELECT SUM(brb.quantity * pb."enterPrice")
+                        SELECT SUM(brb.quantity * pb."enterPrice" * CASE WHEN br."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1), 1.0) ELSE 1.0 END)
                         FROM "BuyerReturnItemBatch" brb
                         JOIN "ProductBatch" pb ON pb.id = brb."productBatchId"
                         WHERE brb."buyerReturnItemId" = bri.id
@@ -499,12 +499,12 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                     ri.quantity as "netQty",
                     ri.total as "netAmount",
                     COALESCE((
-                        SELECT SUM(rib.quantity * rib."enterPrice")
+                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1), 1.0) ELSE 1.0 END)
                         FROM "RealizationItemBatch" rib
                         WHERE rib."realizationItemId" = ri.id
                     ), 0) as "netPurchaseCost",
                     ri.total - COALESCE((
-                        SELECT SUM(rib.quantity * rib."enterPrice")
+                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1), 1.0) ELSE 1.0 END)
                         FROM "RealizationItemBatch" rib
                         WHERE rib."realizationItemId" = ri.id
                     ), 0) as "netProfit",
@@ -522,14 +522,14 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                     -bri.quantity as "netQty",
                     -bri.total as "netAmount",
                     -(COALESCE((
-                        SELECT pb."enterPrice"
+                        SELECT pb."enterPrice" * CASE WHEN br."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1), 1.0) ELSE 1.0 END
                         FROM "BuyerReturnItemBatch" brib
                         JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
                         WHERE brib."buyerReturnItemId" = bri.id
                         LIMIT 1
                     ), 0) * bri.quantity) as "netPurchaseCost",
                     (COALESCE((
-                        SELECT pb."enterPrice"
+                        SELECT pb."enterPrice" * CASE WHEN br."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1), 1.0) ELSE 1.0 END
                         FROM "BuyerReturnItemBatch" brib
                         JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
                         WHERE brib."buyerReturnItemId" = bri.id
