@@ -22,10 +22,16 @@ router.get('/', userAuth, async (req, res) => {
         let values: any[] = [];
         let paramIndex = 1;
 
-        if (user && user.role !== 'admin' && user.warehouseId) {
-            query += ` AND r."warehouseId" = $${paramIndex}`;
-            values.push(user.warehouseId);
-            paramIndex++;
+        if (user && user.role !== 'admin') {
+            const allowedWarehouses = Array.from(new Set([
+                ...(user.warehouseId ? [user.warehouseId] : []),
+                ...(Array.isArray(user.visibleWarehouses) ? user.visibleWarehouses : [])
+            ]));
+            if (allowedWarehouses.length > 0) {
+                query += ` AND r."warehouseId" = ANY($${paramIndex}::text[])`;
+                values.push(allowedWarehouses);
+                paramIndex++;
+            }
         }
 
         if (includeDeleted !== 'true') {
@@ -57,9 +63,15 @@ router.get('/:id', userAuth, async (req, res) => {
         `;
         let values: any[] = [id];
         
-        if (user && user.role !== 'admin' && user.warehouseId) {
-            fetchSql += ` AND r."warehouseId" = $2`;
-            values.push(user.warehouseId);
+        if (user && user.role !== 'admin') {
+            const allowedWarehouses = Array.from(new Set([
+                ...(user.warehouseId ? [user.warehouseId] : []),
+                ...(Array.isArray(user.visibleWarehouses) ? user.visibleWarehouses : [])
+            ]));
+            if (allowedWarehouses.length > 0) {
+                fetchSql += ` AND r."warehouseId" = ANY($2::text[])`;
+                values.push(allowedWarehouses);
+            }
         }
 
         const realization = await pool.query(fetchSql, values);
@@ -89,9 +101,17 @@ router.post('/', userAuth, async (req, res) => {
     let { date, counterpartyId, warehouseId, amount, comment, items, salesType } = req.body;
     const user = (req as AuthRequest).user;
     
-    // Force warehouse assignment for non-admins
-    if (user && user.role !== 'admin' && user.warehouseId) {
-        warehouseId = user.warehouseId;
+    // Validate allowed warehouses for non-admins
+    if (user && user.role !== 'admin') {
+        const allowedWarehouses = Array.from(new Set([
+            ...(user.warehouseId ? [user.warehouseId] : []),
+            ...(Array.isArray(user.visibleWarehouses) ? user.visibleWarehouses : [])
+        ]));
+        if (allowedWarehouses.length > 0) {
+            if (!warehouseId || !allowedWarehouses.includes(warehouseId)) {
+                warehouseId = user.warehouseId || allowedWarehouses[0];
+            }
+        }
     }
     
     const client = await pool.connect();
