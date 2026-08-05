@@ -5,11 +5,11 @@ export const runMigration = async () => {
   try {
     await client.query('BEGIN');
 
-    // Recalculate Realization profit with vatCostCoefficient for salesType = 'з ПДВ'
+    // Recalculate Realization profit with active vatCostCoefficient
     const resRealization = await client.query(`
       UPDATE "Realization" r
       SET "profit" = r.amount - COALESCE((
-          SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1), 1.0) ELSE 1.0 END)
+          SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" > 1.0 ORDER BY "updatedAt" DESC LIMIT 1), 1.0) ELSE 1.0 END)
           FROM "RealizationItem" ri
           JOIN "RealizationItemBatch" rib ON rib."realizationItemId" = ri.id
           WHERE ri."realizationId" = r.id
@@ -17,17 +17,16 @@ export const runMigration = async () => {
       WHERE r.status = 'POSTED';
     `);
 
-    // Recalculate BuyerReturn profit
+    // Recalculate BuyerReturn profit (gross margin of returned goods)
     const resBuyerReturn = await client.query(`
       UPDATE "BuyerReturn" br
-      SET "profit" = -((COALESCE((
-          SELECT pb."enterPrice"
+      SET "profit" = COALESCE((
+          SELECT SUM(bri.total - (brib.quantity * pb."enterPrice"))
           FROM "BuyerReturnItem" bri
           JOIN "BuyerReturnItemBatch" brib ON brib."buyerReturnItemId" = bri.id
           JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
           WHERE bri."buyerReturnId" = br.id
-          LIMIT 1
-      ), 0) * (SELECT COALESCE(SUM(quantity), 0) FROM "BuyerReturnItem" WHERE "buyerReturnId" = br.id)) - br."totalAmount")
+      ), 0)
       WHERE br.status = 'POSTED';
     `);
 

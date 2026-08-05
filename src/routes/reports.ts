@@ -317,7 +317,7 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                     br."counterpartyId",
                     br.id,
                     -br."totalAmount" as "netAmount",
-                    br.profit as "netProfit",
+                    -br.profit as "netProfit",
                     ${includeReturns === 'true' ? "'Готівковий'" : "'Повернення'"} as "salesType"
                 FROM "BuyerReturn" br
                 LEFT JOIN "Counterparty" c ON br."counterpartyId" = c.id
