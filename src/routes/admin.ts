@@ -222,22 +222,6 @@ import { PriceController } from '../controllers/priceController.js';
 router.post('/inventory/arrival', InventoryController.addArrival);
 router.get('/inventory/stock/:productId', InventoryController.getStock);
 
-router.get('/users', async (req: Request, res: Response) => {
-    try {
-        const result = await pool.query('SELECT id, email, role, "warehouseId", "visibleWarehouses", "counterpartyId", "organizationId", "preferences", "permissions", "createdAt", "updatedAt" FROM "User" ORDER BY email ASC');
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Error fetching users (admin) with visibleWarehouses:', error);
-        // Fallback: fetch without visibleWarehouses if column missing
-        try {
-            const fallbackResult = await pool.query('SELECT id, email, role, "warehouseId", "counterpartyId", "organizationId", "preferences", "permissions", "createdAt", "updatedAt" FROM "User" ORDER BY email ASC');
-            res.json(fallbackResult.rows);
-        } catch (fallbackError) {
-            console.error('Fallback fetch users error:', fallbackError);
-            res.status(500).json({ error: 'Failed to fetch users' });
-        }
-    }
-});
 router.get('/test/productbatch', async (req: Request, res: Response) => {
     try {
         const result = await pool.query('SELECT * FROM "ProductBatch" ORDER BY "createdAt" DESC LIMIT 10');

@@ -49,8 +49,19 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         const result = await pool.query('SELECT id, email, role, "warehouseId", "visibleWarehouses", "counterpartyId", "organizationId", "preferences", "permissions", "createdAt", "updatedAt" FROM "User" ORDER BY email ASC');
         res.json(result.rows);
     } catch (error) {
-        console.error('Error fetching users:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('Error fetching users with visibleWarehouses:', error);
+        try {
+            // Fallback for missing visibleWarehouses column
+            const fallbackResult = await pool.query('SELECT id, email, role, "warehouseId", "counterpartyId", "organizationId", "preferences", "permissions", "createdAt", "updatedAt" FROM "User" ORDER BY email ASC');
+            const rows = fallbackResult.rows.map(user => ({
+                ...user,
+                visibleWarehouses: []
+            }));
+            res.json(rows);
+        } catch (fallbackError) {
+            console.error('Error fetching users (fallback):', fallbackError);
+            res.status(500).json({ error: 'Internal server error' });
+        }
     }
 });
 
