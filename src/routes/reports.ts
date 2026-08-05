@@ -292,6 +292,8 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
             }
         }
 
+        const VAT_COEFF_SQL = `COALESCE((SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" > 1.0 ORDER BY "updatedAt" DESC LIMIT 1), (SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" IS NOT NULL ORDER BY "updatedAt" DESC LIMIT 1), 1.0)`;
+
         const query = `
             WITH BaseDocs AS (
                 SELECT 
@@ -299,7 +301,7 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                     r.id,
                     r.amount as "netAmount",
                     (r.amount - COALESCE((
-                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1), 1.0) ELSE 1.0 END)
+                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
                         FROM "RealizationItem" ri
                         JOIN "RealizationItemBatch" rib ON rib."realizationItemId" = ri.id
                         WHERE ri."realizationId" = r.id
@@ -393,6 +395,8 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
             }
         }
 
+        const VAT_COEFF_SQL = `COALESCE((SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" > 1.0 ORDER BY "updatedAt" DESC LIMIT 1), (SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" IS NOT NULL ORDER BY "updatedAt" DESC LIMIT 1), 1.0)`;
+
         const query = `
             WITH BaseItems AS (
                 SELECT 
@@ -400,7 +404,7 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
                     ri.quantity as "netQty",
                     ri.total as "netAmount",
                     COALESCE((
-                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1), 1.0) ELSE 1.0 END)
+                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
                         FROM "RealizationItemBatch" rib
                         WHERE rib."realizationItemId" = ri.id
                     ), 0) as "netPurchaseCost"
@@ -415,7 +419,7 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
                     -bri.quantity as "netQty",
                     -bri.total as "netAmount",
                     -COALESCE((
-                        SELECT SUM(brb.quantity * pb."enterPrice" * CASE WHEN br."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1), 1.0) ELSE 1.0 END)
+                        SELECT SUM(brb.quantity * pb."enterPrice")
                         FROM "BuyerReturnItemBatch" brb
                         JOIN "ProductBatch" pb ON pb.id = brb."productBatchId"
                         WHERE brb."buyerReturnItemId" = bri.id
@@ -496,6 +500,8 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
             }
         }
 
+        const VAT_COEFF_SQL = `COALESCE((SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" > 1.0 ORDER BY "updatedAt" DESC LIMIT 1), (SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" IS NOT NULL ORDER BY "updatedAt" DESC LIMIT 1), 1.0)`;
+
         const query = `
             WITH BaseItems AS (
                 SELECT 
@@ -504,12 +510,12 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                     ri.quantity as "netQty",
                     ri.total as "netAmount",
                     COALESCE((
-                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1), 1.0) ELSE 1.0 END)
+                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
                         FROM "RealizationItemBatch" rib
                         WHERE rib."realizationItemId" = ri.id
                     ), 0) as "netPurchaseCost",
                     ri.total - COALESCE((
-                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1), 1.0) ELSE 1.0 END)
+                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
                         FROM "RealizationItemBatch" rib
                         WHERE rib."realizationItemId" = ri.id
                     ), 0) as "netProfit",
@@ -527,14 +533,14 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                     -bri.quantity as "netQty",
                     -bri.total as "netAmount",
                     -(COALESCE((
-                        SELECT pb."enterPrice" * CASE WHEN br."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1), 1.0) ELSE 1.0 END
+                        SELECT pb."enterPrice"
                         FROM "BuyerReturnItemBatch" brib
                         JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
                         WHERE brib."buyerReturnItemId" = bri.id
                         LIMIT 1
                     ), 0) * bri.quantity) as "netPurchaseCost",
                     (COALESCE((
-                        SELECT pb."enterPrice" * CASE WHEN br."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1), 1.0) ELSE 1.0 END
+                        SELECT pb."enterPrice"
                         FROM "BuyerReturnItemBatch" brib
                         JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
                         WHERE brib."buyerReturnItemId" = bri.id

@@ -129,9 +129,15 @@ export class BuyerReturnService {
             let totalProfit = 0;
             let costMultiplier = 1.0;
             if (doc.salesType === 'з ПДВ') {
-                const orgRes = await client.query('SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1');
-                if (orgRes.rows.length > 0 && orgRes.rows[0].vatCostCoefficient) {
-                    costMultiplier = Number(orgRes.rows[0].vatCostCoefficient);
+                const orgRes = await client.query(`
+                    SELECT COALESCE(
+                        (SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" > 1.0 ORDER BY "updatedAt" DESC LIMIT 1),
+                        (SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" IS NOT NULL ORDER BY "updatedAt" DESC LIMIT 1),
+                        1.0
+                    ) as coeff
+                `);
+                if (orgRes.rows.length > 0 && orgRes.rows[0].coeff) {
+                    costMultiplier = Number(orgRes.rows[0].coeff);
                 }
             }
 
