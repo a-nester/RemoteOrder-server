@@ -355,7 +355,7 @@ router.get('/orders', userAuth, async (req: Request, res: Response) => {
                 ...(Array.isArray(user.visibleWarehouses) ? user.visibleWarehouses : [])
             ]));
             if (allowedWarehouses.length > 0) {
-                query += ` AND o."warehouseId" = ANY($${paramIndex}::text[])`;
+                query += ` AND o."warehouseId"::text = ANY($${paramIndex}::text[])`;
                 params.push(allowedWarehouses);
                 paramIndex++;
             }

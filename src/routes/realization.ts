@@ -4,6 +4,7 @@ import { userAuth, AuthRequest } from '../middleware/auth.js';
 import { generateDocNumber } from '../utils/docNumberGenerator.js';
 import { InventoryService } from '../services/inventoryService.js';
 import { RealizationService } from '../services/realizationService.js';
+import { getUserAllowedWarehouses } from '../utils/userUtils.js';
 
 const router = express.Router();
 
@@ -22,15 +23,14 @@ router.get('/', userAuth, async (req, res) => {
         let values: any[] = [];
         let paramIndex = 1;
 
-        if (user && user.role !== 'admin') {
-            const allowedWarehouses = Array.from(new Set([
-                ...(user.warehouseId ? [user.warehouseId] : []),
-                ...(Array.isArray(user.visibleWarehouses) ? user.visibleWarehouses : [])
-            ]));
+        const allowedWarehouses = getUserAllowedWarehouses(user);
+        if (allowedWarehouses !== null) {
             if (allowedWarehouses.length > 0) {
-                query += ` AND r."warehouseId" = ANY($${paramIndex}::text[])`;
+                query += ` AND r."warehouseId"::text = ANY($${paramIndex}::text[])`;
                 values.push(allowedWarehouses);
                 paramIndex++;
+            } else {
+                query += ` AND 1=0`;
             }
         }
 
@@ -63,14 +63,13 @@ router.get('/:id', userAuth, async (req, res) => {
         `;
         let values: any[] = [id];
         
-        if (user && user.role !== 'admin') {
-            const allowedWarehouses = Array.from(new Set([
-                ...(user.warehouseId ? [user.warehouseId] : []),
-                ...(Array.isArray(user.visibleWarehouses) ? user.visibleWarehouses : [])
-            ]));
+        const allowedWarehouses = getUserAllowedWarehouses(user);
+        if (allowedWarehouses !== null) {
             if (allowedWarehouses.length > 0) {
-                fetchSql += ` AND r."warehouseId" = ANY($2::text[])`;
+                fetchSql += ` AND r."warehouseId"::text = ANY($2::text[])`;
                 values.push(allowedWarehouses);
+            } else {
+                fetchSql += ` AND 1=0`;
             }
         }
 
