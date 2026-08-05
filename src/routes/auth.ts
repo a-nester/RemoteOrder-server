@@ -52,6 +52,7 @@ router.post('/login', async (req: Request, res: Response) => {
                 email: user.email,
                 role: user.role,
                 warehouseId: user.warehouseId,
+                visibleWarehouses: user.visibleWarehouses || [],
                 preferences: user.preferences,
                 permissions: user.permissions
             }

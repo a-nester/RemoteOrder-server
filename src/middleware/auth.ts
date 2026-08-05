@@ -27,15 +27,15 @@ export const adminAuth = async (req: AuthRequest, res: Response, next: NextFunct
             const decoded = jwt.verify(token, JWT_SECRET) as any;
             // Enrich with DB info if needed
             if (decoded && decoded.id) {
-const dbRes = await pool.query('SELECT role, "warehouseId", permissions FROM "User" WHERE id = $1', [decoded.id]);
-if (dbRes.rowCount && dbRes.rowCount > 0) {
-    decoded.role = dbRes.rows[0].role;
-    decoded.warehouseId = dbRes.rows[0].warehouseId;
-    decoded.permissions = dbRes.rows[0].permissions || {};
-}
+                const dbRes = await pool.query('SELECT role, "warehouseId", "visibleWarehouses", permissions FROM "User" WHERE id = $1', [decoded.id]);
+                if (dbRes.rowCount && dbRes.rowCount > 0) {
+                    decoded.role = dbRes.rows[0].role;
+                    decoded.warehouseId = dbRes.rows[0].warehouseId;
+                    decoded.visibleWarehouses = dbRes.rows[0].visibleWarehouses || [];
+                    decoded.permissions = dbRes.rows[0].permissions || {};
+                }
             }
-            // Ensure arrays are defined
-            // visibleWarehouses removed
+            decoded.visibleWarehouses = decoded.visibleWarehouses || [];
             decoded.permissions = decoded.permissions || {};
             if (decoded.role === 'admin' || decoded.role === 'manager') {
                 req.user = decoded;
@@ -49,7 +49,7 @@ if (dbRes.rowCount && dbRes.rowCount > 0) {
     // Legacy admin secret fallback
     const secret = req.headers['x-admin-secret'];
     if (secret && secret === ADMIN_SECRET) {
-        req.user = { role: 'admin', warehouseId: null, permissions: {} };
+        req.user = { role: 'admin', warehouseId: null, visibleWarehouses: [], permissions: {} };
         return next();
     }
 
@@ -71,13 +71,13 @@ export const userAuth = async (req: AuthRequest, res: Response, next: NextFuncti
     try {
         const decoded = jwt.verify(token, JWT_SECRET) as any;
         if (decoded && decoded.id) {
-            const dbRes = await pool.query('SELECT role, "warehouseId", permissions FROM "User" WHERE id = $1', [decoded.id]);
-if (dbRes.rowCount && dbRes.rowCount > 0) {
-    decoded.role = dbRes.rows[0].role;
-    decoded.warehouseId = dbRes.rows[0].warehouseId;
-    decoded.permissions = dbRes.rows[0].permissions || {};
-}
-
+            const dbRes = await pool.query('SELECT role, "warehouseId", "visibleWarehouses", permissions FROM "User" WHERE id = $1', [decoded.id]);
+            if (dbRes.rowCount && dbRes.rowCount > 0) {
+                decoded.role = dbRes.rows[0].role;
+                decoded.warehouseId = dbRes.rows[0].warehouseId;
+                decoded.visibleWarehouses = dbRes.rows[0].visibleWarehouses || [];
+                decoded.permissions = dbRes.rows[0].permissions || {};
+            }
         }
         if (decoded && decoded.warehouseId) {
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
