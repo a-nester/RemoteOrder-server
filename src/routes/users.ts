@@ -91,7 +91,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
             `INSERT INTO "User" (email, password, role, "counterpartyId", "organizationId", "warehouseId", "visibleWarehouses", preferences, permissions) 
              VALUES ($1, $2, $3, $4, $5, $6, $7, '{}', $8) 
              RETURNING id, email, role, "warehouseId", "visibleWarehouses", "counterpartyId", "organizationId", preferences, permissions`,
-            [email, hashedPassword, role, counterpartyId || null, organizationId || null, warehouseId || null, visibleWarehouses || [], permissions || {}]
+            [email, hashedPassword, role, counterpartyId || null, organizationId || null, warehouseId || null, JSON.stringify(visibleWarehouses || []), permissions || {}]
         );
 
         res.status(201).json(result.rows[0]);
@@ -116,47 +116,72 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
             warehouseId = null;
         }
 
-        let query = 'UPDATE "User" SET email = $1, role = $2, "counterpartyId" = $3, "organizationId" = $4';
-        let values: any[] = [email, role, counterpartyId || null, organizationId || null];
-        let paramIndex = 5;
-
-        if (warehouseId !== undefined) {
-            query += `, "warehouseId" = $${paramIndex}`;
-            values.push(warehouseId || null);
-            paramIndex++;
-        }
-        
-        if (visibleWarehouses !== undefined) {
-            query += `, "visibleWarehouses" = $${paramIndex}`;
-            values.push(visibleWarehouses || []);
-            paramIndex++;
-        }
-
-        if (preferences !== undefined) {
-            query += `, preferences = $${paramIndex}`;
-            values.push(preferences);
-            paramIndex++;
-        }
-
-        if (permissions !== undefined) {
-            query += `, permissions = $${paramIndex}`;
-            values.push(permissions);
-            paramIndex++;
-        }
-
+        let hashedPassword: string | undefined;
         if (password) {
-            const hashedPassword = await bcrypt.hash(password, 10);
-            query += `, password = $${paramIndex}`;
-            values.push(hashedPassword);
-            paramIndex++;
+            hashedPassword = await bcrypt.hash(password, 10);
         }
 
-        query += ` WHERE id = $${paramIndex}`;
-        values.push(id);
+        const executeUpdate = async (includeVisibleWarehouses: boolean) => {
+            let query = 'UPDATE "User" SET email = $1, role = $2, "counterpartyId" = $3, "organizationId" = $4';
+            let values: any[] = [email, role, counterpartyId || null, organizationId || null];
+            let paramIndex = 5;
 
-        query += ' RETURNING id, email, role, "warehouseId", "visibleWarehouses", "counterpartyId", "organizationId", preferences, permissions';
+            if (warehouseId !== undefined) {
+                query += `, "warehouseId" = $${paramIndex}`;
+                values.push(warehouseId || null);
+                paramIndex++;
+            }
+            
+            if (includeVisibleWarehouses && visibleWarehouses !== undefined) {
+                query += `, "visibleWarehouses" = $${paramIndex}`;
+                values.push(JSON.stringify(visibleWarehouses || []));
+                paramIndex++;
+            }
 
-        const result = await pool.query(query, values);
+            if (preferences !== undefined) {
+                query += `, preferences = $${paramIndex}`;
+                values.push(preferences);
+                paramIndex++;
+            }
+
+            if (permissions !== undefined) {
+                query += `, permissions = $${paramIndex}`;
+                values.push(permissions);
+                paramIndex++;
+            }
+
+            if (hashedPassword) {
+                query += `, password = $${paramIndex}`;
+                values.push(hashedPassword);
+                paramIndex++;
+            }
+
+            query += ` WHERE id = $${paramIndex}`;
+            values.push(id);
+
+            const returningCols = includeVisibleWarehouses
+                ? 'id, email, role, "warehouseId", "visibleWarehouses", "counterpartyId", "organizationId", preferences, permissions'
+                : 'id, email, role, "warehouseId", "counterpartyId", "organizationId", preferences, permissions';
+
+            query += ` RETURNING ${returningCols}`;
+            return await pool.query(query, values);
+        };
+
+        let result;
+        try {
+            result = await executeUpdate(true);
+        } catch (err: any) {
+            // Fallback if visibleWarehouses column is missing in DB
+            if (err.code === '42703') {
+                console.warn('visibleWarehouses column missing, falling back to basic update...');
+                result = await executeUpdate(false);
+                if (result.rows.length > 0) {
+                    result.rows[0].visibleWarehouses = [];
+                }
+            } else {
+                throw err;
+            }
+        }
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'User not found' });
