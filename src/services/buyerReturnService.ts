@@ -127,6 +127,13 @@ export class BuyerReturnService {
             // at the refund price creates a net-zero if we resold it. For simplicity, we create new ProductBatches.)
             
             let totalProfit = 0;
+            let costMultiplier = 1.0;
+            if (doc.salesType === 'з ПДВ') {
+                const orgRes = await client.query('SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1');
+                if (orgRes.rows.length > 0 && orgRes.rows[0].vatCostCoefficient) {
+                    costMultiplier = Number(orgRes.rows[0].vatCostCoefficient);
+                }
+            }
 
             for (const item of items) {
                 // Retrieve the most recent enterPrice (cost price) for the returned product
@@ -154,8 +161,9 @@ export class BuyerReturnService {
                 );
 
                 // Reversing the profit margin that was generated from the initial sale
-                // Original profit = (sellPrice - costPrice) * quantity = (item.total) - (costPrice * quantity)
-                const itemMargin = (Number(item.price) - costPrice) * Number(item.quantity);
+                // Original profit = (sellPrice - (costPrice * multiplier)) * quantity = (item.total) - (costPrice * multiplier * quantity)
+                const adjustedCostPrice = costPrice * costMultiplier;
+                const itemMargin = (Number(item.price) - adjustedCostPrice) * Number(item.quantity);
                 totalProfit -= itemMargin;
             }
 

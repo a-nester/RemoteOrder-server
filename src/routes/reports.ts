@@ -298,7 +298,12 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                     r."counterpartyId",
                     r.id,
                     r.amount as "netAmount",
-                    r.profit as "netProfit",
+                    (r.amount - COALESCE((
+                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" LIMIT 1), 1.0) ELSE 1.0 END)
+                        FROM "RealizationItem" ri
+                        JOIN "RealizationItemBatch" rib ON rib."realizationItemId" = ri.id
+                        WHERE ri."realizationId" = r.id
+                    ), 0)) as "netProfit",
                     ${groupBySalesType === 'true' ? 'COALESCE(NULLIF(r."salesType", \'\'), \'Не визначено\')' : "''"} as "salesType"
                 FROM "Realization" r
                 LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
@@ -310,7 +315,7 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                     br."counterpartyId",
                     br.id,
                     -br."totalAmount" as "netAmount",
-                    br.profit as "netProfit", -- BuyerReturn profit is already saved as negative
+                    br.profit as "netProfit",
                     ${includeReturns === 'true' ? "'Готівковий'" : "'Повернення'"} as "salesType"
                 FROM "BuyerReturn" br
                 LEFT JOIN "Counterparty" c ON br."counterpartyId" = c.id

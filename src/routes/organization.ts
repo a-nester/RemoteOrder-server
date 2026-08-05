@@ -99,6 +99,20 @@ router.put('/', userAuth, async (req, res) => {
             return res.status(404).json({ message: 'Organization not found' });
         }
 
+        if (vatCostCoefficient !== undefined) {
+            const coeff = Number(vatCostCoefficient);
+            await pool.query(`
+                UPDATE "Realization" r
+                SET "profit" = r.amount - COALESCE((
+                    SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN $1 ELSE 1.0 END)
+                    FROM "RealizationItem" ri
+                    JOIN "RealizationItemBatch" rib ON rib."realizationItemId" = ri.id
+                    WHERE ri."realizationId" = r.id
+                ), 0)
+                WHERE r.status = 'POSTED'
+            `, [coeff]);
+        }
+
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Error updating organization:', error);
