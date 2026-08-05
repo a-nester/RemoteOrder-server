@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { AuthRequest, userAuth } from '../middleware/auth.js';
+import { AuthRequest, userAuth, adminAuth } from '../middleware/auth.js';
 import pool from '../db.js';
 import bcrypt from 'bcryptjs';
 
@@ -41,7 +41,7 @@ router.put('/me/preferences', userAuth, async (req: AuthRequest, res: Response) 
 });
 
 // Apply admin check for the rest of the generic user routes
-router.use(userAuth, requireAdmin);
+router.use(adminAuth);
 
 // GET all users
 router.get('/', async (req: AuthRequest, res: Response) => {
