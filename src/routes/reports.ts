@@ -854,12 +854,35 @@ router.get('/cashflow', async (req: Request, res: Response) => {
         let totalIncome = 0;
         let totalOutcome = 0;
         const incomesByCategory: Record<string, { name: string, amount: number }> = {};
-        const outcomesByCategory: Record<string, { name: string, amount: number }> = {};
+        
+        // Fetch all OUTCOME categories to ensure mandatory categories (Оренда, Зп, Загальні витрати) are pre-populated
+        const allOutcomeCats = await pool.query(`SELECT id, name FROM "TransactionCategory" WHERE type = 'OUTCOME'`);
+        
+        const outcomesByCategory: Record<string, { name: string, amount: number }> = {
+            'mandatory_rent': { name: 'Оренда', amount: 0 },
+            'mandatory_salary': { name: 'Зп', amount: 0 },
+            'mandatory_general': { name: 'Загальні витрати', amount: 0 },
+        };
+
+        allOutcomeCats.rows.forEach((cat: any) => {
+            const displayName = (cat.name === 'Зарплата' || cat.name === 'ЗП') ? 'Зп' : cat.name;
+            const existingKey = Object.keys(outcomesByCategory).find(k => outcomesByCategory[k]?.name === displayName);
+            if (existingKey) {
+                const item = outcomesByCategory[existingKey];
+                if (item) {
+                    outcomesByCategory[cat.id] = item;
+                    delete outcomesByCategory[existingKey];
+                }
+            } else {
+                outcomesByCategory[cat.id] = { name: displayName, amount: 0 };
+            }
+        });
 
         const ledger = result.rows.map((row: any) => {
             const amt = parseFloat(row.amount);
             const catId = row.categoryId || 'uncategorized';
-            const catName = row.categoryName || 'Без статті';
+            let catName = row.categoryName || 'Без статті';
+            if (catName === 'Зарплата' || catName === 'ЗП') catName = 'Зп';
 
             if(row.type === 'INCOME') {
                 runningBalance += amt;
@@ -869,13 +892,39 @@ router.get('/cashflow', async (req: Request, res: Response) => {
             } else {
                 runningBalance -= amt;
                 totalOutcome += amt;
-                if (!outcomesByCategory[catId]) outcomesByCategory[catId] = { name: catName, amount: 0 };
-                outcomesByCategory[catId].amount += amt;
+                
+                let targetKey = catId;
+                if (!outcomesByCategory[targetKey]) {
+                    const foundKey = Object.keys(outcomesByCategory).find(k => outcomesByCategory[k]?.name === catName);
+                    if (foundKey) {
+                        targetKey = foundKey;
+                    } else {
+                        outcomesByCategory[targetKey] = { name: catName, amount: 0 };
+                    }
+                }
+                const entry = outcomesByCategory[targetKey];
+                if (entry) {
+                    entry.amount += amt;
+                }
             }
             return {
                 ...row,
+                categoryName: catName,
                 runningBalance
             };
+        });
+
+        // Deduplicate and aggregate outcomes by category name
+        const uniqueOutcomesMap: Record<string, { name: string, amount: number }> = {};
+        Object.values(outcomesByCategory).forEach(item => {
+            if (item) {
+                const existing = uniqueOutcomesMap[item.name];
+                if (!existing) {
+                    uniqueOutcomesMap[item.name] = { name: item.name, amount: item.amount };
+                } else {
+                    existing.amount += item.amount;
+                }
+            }
         });
 
         res.json({ 
@@ -885,7 +934,7 @@ router.get('/cashflow', async (req: Request, res: Response) => {
             totalIncome, 
             totalOutcome,
             incomesByCategory: Object.values(incomesByCategory).sort((a,b) => b.amount - a.amount),
-            outcomesByCategory: Object.values(outcomesByCategory).sort((a,b) => b.amount - a.amount)
+            outcomesByCategory: Object.values(uniqueOutcomesMap).sort((a,b) => b.amount - a.amount)
         });
     } catch (error) {
         console.error('Error generating cashflow report:', error);
