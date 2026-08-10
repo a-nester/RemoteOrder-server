@@ -6,6 +6,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { adminAuth, userAuth } from '../middleware/auth.js';
 import { generateDocNumber } from '../utils/docNumberGenerator.js';
+import { getUserAllowedTerritories } from '../utils/userUtils.js';
 
 // removed MulterRequest interface to avoid conflict
 
@@ -357,6 +358,13 @@ router.get('/orders', userAuth, async (req: Request, res: Response) => {
             if (allowedWarehouses.length > 0) {
                 query += ` AND o."warehouseId"::text = ANY($${paramIndex}::text[])`;
                 params.push(allowedWarehouses);
+                paramIndex++;
+            }
+
+            const allowedTerritories = getUserAllowedTerritories(user);
+            if (allowedTerritories !== null && allowedTerritories.length > 0) {
+                query += ` AND c."territoryId"::text = ANY($${paramIndex}::text[])`;
+                params.push(allowedTerritories);
                 paramIndex++;
             }
         }
