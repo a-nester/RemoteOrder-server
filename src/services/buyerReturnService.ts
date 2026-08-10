@@ -284,9 +284,17 @@ export class BuyerReturnService {
             query += ` AND br.date <= $${pIdx++}`;
             params.push(filters.endDate);
         }
-        if (filters.warehouseId) {
-            query += ` AND br."warehouseId" = $${pIdx++}`;
-            params.push(filters.warehouseId);
+        if (filters.allowedWarehouses !== undefined && filters.allowedWarehouses !== null) {
+            if (filters.allowedWarehouses.length > 0) {
+                query += ` AND br."warehouseId"::text = ANY($${pIdx++}::text[])`;
+                params.push(filters.allowedWarehouses);
+            } else {
+                query += ` AND 1=0`;
+            }
+        }
+        if (filters.allowedTerritories !== undefined && filters.allowedTerritories !== null && filters.allowedTerritories.length > 0) {
+            query += ` AND c."territoryId"::text = ANY($${pIdx++}::text[])`;
+            params.push(filters.allowedTerritories);
         }
 
         query += ` ORDER BY br.date DESC`;

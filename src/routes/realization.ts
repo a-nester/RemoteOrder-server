@@ -4,7 +4,7 @@ import { userAuth, AuthRequest } from '../middleware/auth.js';
 import { generateDocNumber } from '../utils/docNumberGenerator.js';
 import { InventoryService } from '../services/inventoryService.js';
 import { RealizationService } from '../services/realizationService.js';
-import { getUserAllowedWarehouses } from '../utils/userUtils.js';
+import { getUserAllowedWarehouses, getUserAllowedTerritories } from '../utils/userUtils.js';
 
 const router = express.Router();
 
@@ -32,6 +32,13 @@ router.get('/', userAuth, async (req, res) => {
             } else {
                 query += ` AND 1=0`;
             }
+        }
+
+        const allowedTerritories = getUserAllowedTerritories(user);
+        if (allowedTerritories !== null && allowedTerritories.length > 0) {
+            query += ` AND c."territoryId"::text = ANY($${paramIndex}::text[])`;
+            values.push(allowedTerritories);
+            paramIndex++;
         }
 
         if (includeDeleted !== 'true') {

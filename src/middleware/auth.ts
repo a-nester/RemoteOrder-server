@@ -27,15 +27,17 @@ export const adminAuth = async (req: AuthRequest, res: Response, next: NextFunct
             const decoded = jwt.verify(token, JWT_SECRET) as any;
             // Enrich with DB info if needed
             if (decoded && decoded.id) {
-                const dbRes = await pool.query('SELECT role, "warehouseId", "visibleWarehouses", permissions FROM "User" WHERE id = $1', [decoded.id]);
+                const dbRes = await pool.query('SELECT role, "warehouseId", "visibleWarehouses", "visibleTerritories", permissions FROM "User" WHERE id = $1', [decoded.id]);
                 if (dbRes.rowCount && dbRes.rowCount > 0) {
                     decoded.role = dbRes.rows[0].role;
                     decoded.warehouseId = dbRes.rows[0].warehouseId;
                     decoded.visibleWarehouses = dbRes.rows[0].visibleWarehouses || [];
+                    decoded.visibleTerritories = dbRes.rows[0].visibleTerritories || [];
                     decoded.permissions = dbRes.rows[0].permissions || {};
                 }
             }
             decoded.visibleWarehouses = decoded.visibleWarehouses || [];
+            decoded.visibleTerritories = decoded.visibleTerritories || [];
             decoded.permissions = decoded.permissions || {};
             if (decoded.role === 'admin' || decoded.role === 'manager') {
                 req.user = decoded;
@@ -71,11 +73,12 @@ export const userAuth = async (req: AuthRequest, res: Response, next: NextFuncti
     try {
         const decoded = jwt.verify(token, JWT_SECRET) as any;
         if (decoded && decoded.id) {
-            const dbRes = await pool.query('SELECT role, "warehouseId", "visibleWarehouses", permissions FROM "User" WHERE id = $1', [decoded.id]);
+            const dbRes = await pool.query('SELECT role, "warehouseId", "visibleWarehouses", "visibleTerritories", permissions FROM "User" WHERE id = $1', [decoded.id]);
             if (dbRes.rowCount && dbRes.rowCount > 0) {
                 decoded.role = dbRes.rows[0].role;
                 decoded.warehouseId = dbRes.rows[0].warehouseId;
                 decoded.visibleWarehouses = dbRes.rows[0].visibleWarehouses || [];
+                decoded.visibleTerritories = dbRes.rows[0].visibleTerritories || [];
                 decoded.permissions = dbRes.rows[0].permissions || {};
             }
         }

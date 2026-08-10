@@ -1,4 +1,5 @@
 import { BuyerReturnService } from '../services/buyerReturnService.js';
+import { getUserAllowedWarehouses, getUserAllowedTerritories } from '../utils/userUtils.js';
 
 export class BuyerReturnController {
 
@@ -9,7 +10,8 @@ export class BuyerReturnController {
             const filters = {
                 startDate: req.query.startDate,
                 endDate: req.query.endDate,
-                warehouseId: user && user.role !== 'admin' ? user.warehouseId : undefined
+                allowedWarehouses: getUserAllowedWarehouses(user),
+                allowedTerritories: getUserAllowedTerritories(user)
             };
             const docs = await BuyerReturnService.getAll(filters);
             res.json(docs);

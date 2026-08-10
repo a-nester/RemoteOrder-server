@@ -241,6 +241,8 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
     }
 });
 
+import { getUserAllowedTerritories } from '../utils/userUtils.js';
+
 // GET /api/reports/sales/by-client
 router.get('/sales/by-client', async (req: Request, res: Response) => {
     try {
@@ -254,6 +256,13 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
             rFilters += ` AND r."warehouseId" = $${params.length + 1}`;
             brFilters += ` AND br."warehouseId" = $${params.length + 1}`;
             params.push(user.warehouseId);
+        }
+
+        const allowedTerritories = getUserAllowedTerritories(user);
+        if (allowedTerritories !== null && allowedTerritories.length > 0) {
+            rFilters += ` AND c."territoryId"::text = ANY($${params.length + 1}::text[])`;
+            brFilters += ` AND c."territoryId"::text = ANY($${params.length + 1}::text[])`;
+            params.push(allowedTerritories);
         }
 
         if (dateFrom && dateTo) {
@@ -462,6 +471,13 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
             rFilters += ` AND r."warehouseId" = $${params.length + 1}`;
             brFilters += ` AND br."warehouseId" = $${params.length + 1}`;
             params.push(user.warehouseId);
+        }
+
+        const allowedTerritories = getUserAllowedTerritories(user);
+        if (allowedTerritories !== null && allowedTerritories.length > 0) {
+            rFilters += ` AND c."territoryId"::text = ANY($${params.length + 1}::text[])`;
+            brFilters += ` AND c."territoryId"::text = ANY($${params.length + 1}::text[])`;
+            params.push(allowedTerritories);
         }
 
         if (dateFrom && dateTo) {

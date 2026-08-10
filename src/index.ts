@@ -20,6 +20,7 @@ import financeRoutes from './routes/finance.js';
 import collectionScheduleRoutes from './routes/collection-schedule.js';
 import pickingListRoutes from './routes/picking-list.js';
 import repostRoutes from './routes/repost.js';
+import territoryRoutes from './routes/territories.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -61,6 +62,7 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/collection-schedule', collectionScheduleRoutes);
 app.use('/api/picking-list', pickingListRoutes);
+app.use('/api/territories', territoryRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -111,6 +113,7 @@ import { runMigration as addCategoriesToOrganizationMigration } from './migratio
 import { runMigration as addVisibleWarehousesMigration } from './migrations/108_add_visible_warehouses.js';
 import { runMigration as addVatCostCoefficientMigration } from './migrations/109_add_vat_cost_coefficient_to_organization.js';
 import { runMigration as recalculateProfitWithVatCoefficientMigration } from './migrations/110_recalculate_profit_with_vat_coefficient.js';
+import { runMigration as addTerritoriesMigration } from './migrations/111_add_territories.js';
 
 const start = async () => {
   try {
@@ -141,6 +144,7 @@ const start = async () => {
     await addVisibleWarehousesMigration();
     await addVatCostCoefficientMigration();
     await recalculateProfitWithVatCoefficientMigration();
+    await addTerritoriesMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);

@@ -46,7 +46,7 @@ router.use(adminAuth);
 // GET all users
 router.get('/', async (req: AuthRequest, res: Response) => {
     try {
-        const result = await pool.query('SELECT id, email, role, "warehouseId", "visibleWarehouses", "counterpartyId", "organizationId", "preferences", "permissions", "createdAt", "updatedAt" FROM "User" ORDER BY email ASC');
+        const result = await pool.query('SELECT id, email, role, "warehouseId", "visibleWarehouses", "visibleTerritories", "counterpartyId", "organizationId", "preferences", "permissions", "createdAt", "updatedAt" FROM "User" ORDER BY email ASC');
         res.json(result.rows);
     } catch (error) {
         console.error('Error fetching users with visibleWarehouses:', error);
@@ -68,7 +68,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 // CREATE new user
 router.post('/', async (req: AuthRequest, res: Response) => {
     try {
-        let { email, password, role, counterpartyId, organizationId, warehouseId, visibleWarehouses, permissions } = req.body as any;
+        let { email, password, role, counterpartyId, organizationId, warehouseId, visibleWarehouses, visibleTerritories, permissions } = req.body as any;
         
         if (!email || !password || !role) {
             return res.status(400).json({ error: 'Email, password, and role are required' });
@@ -88,10 +88,10 @@ router.post('/', async (req: AuthRequest, res: Response) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         
         const result = await pool.query(
-            `INSERT INTO "User" (email, password, role, "counterpartyId", "organizationId", "warehouseId", "visibleWarehouses", preferences, permissions) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, '{}', $8) 
-             RETURNING id, email, role, "warehouseId", "visibleWarehouses", "counterpartyId", "organizationId", preferences, permissions`,
-            [email, hashedPassword, role, counterpartyId || null, organizationId || null, warehouseId || null, JSON.stringify(visibleWarehouses || []), permissions || {}]
+            `INSERT INTO "User" (email, password, role, "counterpartyId", "organizationId", "warehouseId", "visibleWarehouses", "visibleTerritories", preferences, permissions) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '{}', $9) 
+             RETURNING id, email, role, "warehouseId", "visibleWarehouses", "visibleTerritories", "counterpartyId", "organizationId", preferences, permissions`,
+            [email, hashedPassword, role, counterpartyId || null, organizationId || null, warehouseId || null, JSON.stringify(visibleWarehouses || []), JSON.stringify(visibleTerritories || []), permissions || {}]
         );
 
         res.status(201).json(result.rows[0]);
@@ -105,7 +105,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 router.put('/:id', async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        let { email, role, password, counterpartyId, organizationId, warehouseId, visibleWarehouses, preferences, permissions } = req.body as any;
+        let { email, role, password, counterpartyId, organizationId, warehouseId, visibleWarehouses, visibleTerritories, preferences, permissions } = req.body as any;
 
         if (!email || !role) {
             return res.status(400).json({ error: 'Email and role are required' });
@@ -121,7 +121,7 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
             hashedPassword = await bcrypt.hash(password, 10);
         }
 
-        const executeUpdate = async (includeVisibleWarehouses: boolean) => {
+        const executeUpdate = async (includeVisibleFields: boolean) => {
             let query = 'UPDATE "User" SET email = $1, role = $2, "counterpartyId" = $3, "organizationId" = $4';
             let values: any[] = [email, role, counterpartyId || null, organizationId || null];
             let paramIndex = 5;
@@ -132,9 +132,15 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
                 paramIndex++;
             }
             
-            if (includeVisibleWarehouses && visibleWarehouses !== undefined) {
+            if (includeVisibleFields && visibleWarehouses !== undefined) {
                 query += `, "visibleWarehouses" = $${paramIndex}`;
                 values.push(JSON.stringify(visibleWarehouses || []));
+                paramIndex++;
+            }
+
+            if (includeVisibleFields && visibleTerritories !== undefined) {
+                query += `, "visibleTerritories" = $${paramIndex}`;
+                values.push(JSON.stringify(visibleTerritories || []));
                 paramIndex++;
             }
 
@@ -159,8 +165,8 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
             query += ` WHERE id = $${paramIndex}`;
             values.push(id);
 
-            const returningCols = includeVisibleWarehouses
-                ? 'id, email, role, "warehouseId", "visibleWarehouses", "counterpartyId", "organizationId", preferences, permissions'
+            const returningCols = includeVisibleFields
+                ? 'id, email, role, "warehouseId", "visibleWarehouses", "visibleTerritories", "counterpartyId", "organizationId", preferences, permissions'
                 : 'id, email, role, "warehouseId", "counterpartyId", "organizationId", preferences, permissions';
 
             query += ` RETURNING ${returningCols}`;
