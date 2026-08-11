@@ -21,3 +21,13 @@ export function getUserAllowedTerritories(user: any): string[] | null {
     }
     return null;
 }
+
+export function getUserAllowedPriceTypes(user: any): string[] | null {
+    if (!user || user.role === 'admin') {
+        return null; // Null means unlimited access (admin sees all price types)
+    }
+    if (Array.isArray(user.visiblePriceTypes) && user.visiblePriceTypes.length > 0) {
+        return user.visiblePriceTypes;
+    }
+    return null;
+}

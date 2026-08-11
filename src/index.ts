@@ -114,6 +114,8 @@ import { runMigration as addVisibleWarehousesMigration } from './migrations/108_
 import { runMigration as addVatCostCoefficientMigration } from './migrations/109_add_vat_cost_coefficient_to_organization.js';
 import { runMigration as recalculateProfitWithVatCoefficientMigration } from './migrations/110_recalculate_profit_with_vat_coefficient.js';
 import { runMigration as addTerritoriesMigration } from './migrations/111_add_territories.js';
+import { runMigration as addUserIdToCollectionScheduleMigration } from './migrations/112_add_user_id_to_collection_schedule.js';
+import { runMigration as addVisiblePriceTypesMigration } from './migrations/113_add_visible_price_types.js';
 
 const start = async () => {
   try {
@@ -145,6 +147,8 @@ const start = async () => {
     await addVatCostCoefficientMigration();
     await recalculateProfitWithVatCoefficientMigration();
     await addTerritoriesMigration();
+    await addUserIdToCollectionScheduleMigration();
+    await addVisiblePriceTypesMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
