@@ -116,6 +116,7 @@ import { runMigration as recalculateProfitWithVatCoefficientMigration } from './
 import { runMigration as addTerritoriesMigration } from './migrations/111_add_territories.js';
 import { runMigration as addUserIdToCollectionScheduleMigration } from './migrations/112_add_user_id_to_collection_schedule.js';
 import { runMigration as addVisiblePriceTypesMigration } from './migrations/113_add_visible_price_types.js';
+import { runMigration as addTernopilManagerMigration } from './migrations/114_add_ternopil_manager.js';
 
 const start = async () => {
   try {
@@ -149,6 +150,7 @@ const start = async () => {
     await addTerritoriesMigration();
     await addUserIdToCollectionScheduleMigration();
     await addVisiblePriceTypesMigration();
+    await addTernopilManagerMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);

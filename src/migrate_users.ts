@@ -47,6 +47,7 @@ async function migrateUsers() {
             { email: "client@test.com", password: "123456", role: "client", warehouseId: "1" },
             { email: "manager2@test.com", password: "123456", role: "manager", warehouseId: "2" },
             { email: "client2@test.com", password: "123456", role: "client", warehouseId: "2" },
+            { email: "ternopil@test.com", password: "123456", role: "manager", warehouseId: "1" },
         ];
 
         for (const user of users) {
