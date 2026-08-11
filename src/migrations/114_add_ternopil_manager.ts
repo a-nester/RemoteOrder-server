@@ -13,8 +13,8 @@ export const runMigration = async () => {
       territoryId = terrRes.rows[0].id;
     } else {
       const newTerr = await client.query(
-        'INSERT INTO "Territory" (name, description, "createdAt", "updatedAt") VALUES ($1, $2, NOW(), NOW()) RETURNING id',
-        ['Тернопіль', 'Територія м. Тернопіль']
+        'INSERT INTO "Territory" (name, "createdAt", "updatedAt") VALUES ($1, NOW(), NOW()) RETURNING id',
+        ['Тернопіль']
       );
       territoryId = newTerr.rows[0].id;
       console.log('✅ Created territory: Тернопіль');
