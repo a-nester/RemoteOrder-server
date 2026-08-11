@@ -117,6 +117,7 @@ import { runMigration as addTerritoriesMigration } from './migrations/111_add_te
 import { runMigration as addUserIdToCollectionScheduleMigration } from './migrations/112_add_user_id_to_collection_schedule.js';
 import { runMigration as addVisiblePriceTypesMigration } from './migrations/113_add_visible_price_types.js';
 import { runMigration as addTernopilManagerMigration } from './migrations/114_add_ternopil_manager.js';
+import { runMigration as fixCollectionSchedulePerUserMigration } from './migrations/115_fix_collection_schedule_per_user.js';
 
 const start = async () => {
   try {
@@ -151,6 +152,7 @@ const start = async () => {
     await addUserIdToCollectionScheduleMigration();
     await addVisiblePriceTypesMigration();
     await addTernopilManagerMigration();
+    await fixCollectionSchedulePerUserMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);

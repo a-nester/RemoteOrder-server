@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.use(adminAuth as any);
 
-// Get schedule items for the week
+// Get schedule items for the week (Strictly per user)
 router.get("/", async (req: AuthRequest, res) => {
   try {
     const user = req.user;
@@ -41,7 +41,7 @@ router.get("/", async (req: AuthRequest, res) => {
     const params: any[] = [];
 
     if (targetUserId) {
-      query += ` AND (cs."userId" = $1 OR cs."userId" IS NULL)`;
+      query += ` AND cs."userId" = $1`;
       params.push(targetUserId);
     }
 
@@ -84,27 +84,30 @@ router.post("/", async (req: AuthRequest, res) => {
 });
 
 // Update status
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", async (req: AuthRequest, res) => {
   const { id } = req.params;
   const { status } = req.body;
+  const user = req.user;
 
   if (!["planned", "in_progress", "done"].includes(status)) {
     return res.status(400).json({ error: "Invalid status" });
   }
 
   try {
-    const result = await pool.query(
-      `
-      UPDATE collection_schedule
-      SET status = $1
-      WHERE id = $2
-      RETURNING *
-      `,
-      [status, id],
-    );
+    let query = `UPDATE collection_schedule SET status = $1 WHERE id = $2`;
+    const params: any[] = [status, id];
+
+    if (user?.role !== 'admin') {
+      query += ` AND "userId" = $3`;
+      params.push(String(user?.id));
+    }
+
+    query += ` RETURNING *`;
+
+    const result = await pool.query(query, params);
     
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Item not found" });
+      return res.status(404).json({ error: "Item not found or access denied" });
     }
     
     res.json(result.rows[0]);
@@ -115,23 +118,26 @@ router.patch("/:id", async (req, res) => {
 });
 
 // Update day (Drag and Drop)
-router.patch("/:id/day", async (req, res) => {
+router.patch("/:id/day", async (req: AuthRequest, res) => {
   const { id } = req.params;
   const { dayOfWeek } = req.body;
+  const user = req.user;
 
   try {
-    const result = await pool.query(
-      `
-      UPDATE collection_schedule
-      SET day_of_week = $1
-      WHERE id = $2
-      RETURNING id, day_of_week as "dayOfWeek", client_id, status
-      `,
-      [dayOfWeek, id],
-    );
+    let query = `UPDATE collection_schedule SET day_of_week = $1 WHERE id = $2`;
+    const params: any[] = [dayOfWeek, id];
+
+    if (user?.role !== 'admin') {
+      query += ` AND "userId" = $3`;
+      params.push(String(user?.id));
+    }
+
+    query += ` RETURNING id, day_of_week as "dayOfWeek", client_id, status`;
+
+    const result = await pool.query(query, params);
     
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Item not found" });
+      return res.status(404).json({ error: "Item not found or access denied" });
     }
     
     res.json(result.rows[0]);
@@ -142,11 +148,20 @@ router.patch("/:id/day", async (req, res) => {
 });
 
 // Delete item
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req: AuthRequest, res) => {
   const { id } = req.params;
+  const user = req.user;
 
   try {
-    await pool.query("DELETE FROM collection_schedule WHERE id = $1", [id]);
+    let query = `DELETE FROM collection_schedule WHERE id = $1`;
+    const params: any[] = [id];
+
+    if (user?.role !== 'admin') {
+      query += ` AND "userId" = $2`;
+      params.push(String(user?.id));
+    }
+
+    await pool.query(query, params);
     res.status(204).send();
   } catch (error) {
     console.error("Failed to delete item:", error);
@@ -169,7 +184,7 @@ router.get("/day-summary", async (req: AuthRequest, res) => {
       `
       WITH clients_on_day AS (
         SELECT client_id FROM collection_schedule 
-        WHERE day_of_week = $1 AND ($2::text IS NULL OR "userId" = $2 OR "userId" IS NULL)
+        WHERE day_of_week = $1 AND ($2::text IS NULL OR "userId" = $2)
       ),
       current_week_orders AS (
         SELECT * FROM "Order" 
