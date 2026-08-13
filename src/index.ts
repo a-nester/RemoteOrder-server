@@ -21,6 +21,8 @@ import collectionScheduleRoutes from './routes/collection-schedule.js';
 import pickingListRoutes from './routes/picking-list.js';
 import repostRoutes from './routes/repost.js';
 import territoryRoutes from './routes/territories.js';
+import backupRoutes from './routes/backupRoutes.js';
+import { BackupService } from './services/backupService.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -48,6 +50,7 @@ app.use(express.static(clientBuildPath));
 app.use('/api/auth', authRoutes);
 app.use('/api', syncRoutes);
 app.use('/api/admin/users', usersRoutes);
+app.use('/api/admin/backups', backupRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/service/repost-documents', repostRoutes);
 app.use('/api/admin', priceTypeRoutes);
@@ -118,6 +121,7 @@ import { runMigration as addUserIdToCollectionScheduleMigration } from './migrat
 import { runMigration as addVisiblePriceTypesMigration } from './migrations/113_add_visible_price_types.js';
 import { runMigration as addTernopilManagerMigration } from './migrations/114_add_ternopil_manager.js';
 import { runMigration as fixCollectionSchedulePerUserMigration } from './migrations/115_fix_collection_schedule_per_user.js';
+import { runMigration as repairCorruptedOrdersMigration } from './migrations/116_repair_corrupted_orders.js';
 
 const start = async () => {
   try {
@@ -153,9 +157,17 @@ const start = async () => {
     await addVisiblePriceTypesMigration();
     await addTernopilManagerMigration();
     await fixCollectionSchedulePerUserMigration();
+    await repairCorruptedOrdersMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
+
+      // Schedule automated daily backup (every 24 hours)
+      const DAILY_MS = 24 * 60 * 60 * 1000;
+      setInterval(() => {
+        console.log('⏰ Running scheduled daily database backup...');
+        BackupService.createBackup().catch(err => console.error('Daily backup error:', err));
+      }, DAILY_MS);
     });
   } catch (error) {
     console.error('Failed to start server:', error);

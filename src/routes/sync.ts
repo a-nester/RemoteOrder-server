@@ -124,10 +124,13 @@ router.post('/sync/push', async (req: Request, res: Response) => {
                INSERT INTO "Order" (id, "userId", "counterpartyId", status, total, items, "isDeleted", "createdAt", "updatedAt")
                VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, NOW()), NOW())
                ON CONFLICT (id) DO UPDATE SET
-                  "counterpartyId" = EXCLUDED."counterpartyId",
-                  status = EXCLUDED.status,
-                  total = EXCLUDED.total,
-                  items = EXCLUDED.items,
+                  "counterpartyId" = COALESCE(EXCLUDED."counterpartyId", "Order"."counterpartyId"),
+                  status = COALESCE(EXCLUDED.status, "Order".status),
+                  total = COALESCE(EXCLUDED.total, "Order".total),
+                  items = CASE 
+                    WHEN EXCLUDED.items IS NOT NULL AND EXCLUDED.items != '[]'::jsonb THEN EXCLUDED.items 
+                    ELSE "Order".items 
+                  END,
                   "isDeleted" = EXCLUDED."isDeleted",
                   "createdAt" = COALESCE(EXCLUDED."createdAt", "Order"."createdAt"),
                   "updatedAt" = NOW()
@@ -143,23 +146,21 @@ router.post('/sync/push', async (req: Request, res: Response) => {
               data.total || 0,
               JSON.stringify(data.items || []), // Keep JSON for compatibility/cache
               data.isDeleted ? true : false,
-              data.date || new Date().toISOString()
+              data.date ? new Date(data.date).toISOString() : null
             ]);
 
             // 2. Process Items (Just Save, No Stock Deduction)
-            if (data.items && Array.isArray(data.items)) {
+            if (data.items && Array.isArray(data.items) && data.items.length > 0) {
               // Delete old items first to prevent duplication on Upsert
               await client.query('DELETE FROM "OrderItem" WHERE "orderId" = $1', [id]);
               
-              if (data.items && Array.isArray(data.items)) {
-                for (const [index, item] of data.items.entries()) {
-                  // Create Normalized OrderItem
-                  await client.query(
-                    `INSERT INTO "OrderItem" ("id", "orderId", "productId", "quantity", "sellPrice", "sortOrder", "createdAt")
-                           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())`,
-                    [id, item.id, item.count, item.price, index]
-                  );
-                }
+              for (const [index, item] of data.items.entries()) {
+                // Create Normalized OrderItem
+                await client.query(
+                  `INSERT INTO "OrderItem" ("id", "orderId", "productId", "quantity", "sellPrice", "sortOrder", "createdAt")
+                         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW())`,
+                  [id, item.id, item.count, item.price, index]
+                );
               }
             }
 
@@ -179,7 +180,10 @@ router.post('/sync/push', async (req: Request, res: Response) => {
             SET "counterpartyId" = COALESCE($2, "counterpartyId"),
                 status = COALESCE($3, status),
                 total = COALESCE($4, total),
-                items = COALESCE($5, items),
+                items = CASE 
+                  WHEN $5::jsonb IS NOT NULL AND $5::jsonb != '[]'::jsonb THEN $5::jsonb 
+                  ELSE items 
+                END,
                 "isDeleted" = COALESCE($6, "isDeleted"),
                 "createdAt" = COALESCE($7, "createdAt"),
                 "updatedAt" = NOW()
@@ -188,12 +192,12 @@ router.post('/sync/push', async (req: Request, res: Response) => {
           `;
           result = await pool.query(updateQuery, [
             id,
-            data.counterpartyId,
-            data.status,
-            data.total,
+            data.counterpartyId || null,
+            data.status || null,
+            data.total || null,
             data.items ? JSON.stringify(data.items) : null,
-            data.isDeleted,
-            data.date
+            data.isDeleted !== undefined ? data.isDeleted : null,
+            data.date ? new Date(data.date).toISOString() : null
           ]);
 
         } else if (operation === 'DELETE') {
