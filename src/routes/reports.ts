@@ -246,7 +246,7 @@ import { getUserAllowedTerritories } from '../utils/userUtils.js';
 // GET /api/reports/sales/by-client
 router.get('/sales/by-client', async (req: Request, res: Response) => {
     try {
-        const { dateFrom, dateTo, counterparty, groupBySalesType, salesType, includeReturns } = req.query;
+        const { dateFrom, dateTo, counterparty, groupIds, counterpartyIds, groupBySalesType, salesType, includeReturns } = req.query;
         const user = (req as AuthRequest).user;
         let params: any[] = [];
         let rFilters = '';
@@ -283,6 +283,24 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
             rFilters += ` AND c.name ILIKE $${params.length + 1}`;
             brFilters += ` AND c.name ILIKE $${params.length + 1}`;
             params.push(`%${counterparty}%`);
+        }
+
+        if (groupIds) {
+            const groupArr = (Array.isArray(groupIds) ? groupIds : String(groupIds).split(',')).filter(Boolean);
+            if (groupArr.length > 0) {
+                rFilters += ` AND c."groupId"::text = ANY($${params.length + 1}::text[])`;
+                brFilters += ` AND c."groupId"::text = ANY($${params.length + 1}::text[])`;
+                params.push(groupArr);
+            }
+        }
+
+        if (counterpartyIds) {
+            const cpArr = (Array.isArray(counterpartyIds) ? counterpartyIds : String(counterpartyIds).split(',')).filter(Boolean);
+            if (cpArr.length > 0) {
+                rFilters += ` AND c.id::text = ANY($${params.length + 1}::text[])`;
+                brFilters += ` AND c.id::text = ANY($${params.length + 1}::text[])`;
+                params.push(cpArr);
+            }
         }
 
         if (salesType) {
@@ -461,7 +479,7 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
 // GET /api/reports/sales/by-product
 router.get('/sales/by-product', async (req: Request, res: Response) => {
     try {
-        const { dateFrom, dateTo, counterparty, groupBySalesType, salesType, includeReturns } = req.query;
+        const { dateFrom, dateTo, counterparty, groupIds, counterpartyIds, groupBySalesType, salesType, includeReturns } = req.query;
         const user = (req as AuthRequest).user;
         let params: any[] = [];
         let rFilters = '';
@@ -498,6 +516,24 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
             rFilters += ` AND c.name ILIKE $${params.length + 1}`;
             brFilters += ` AND c.name ILIKE $${params.length + 1}`;
             params.push(`%${counterparty}%`);
+        }
+
+        if (groupIds) {
+            const groupArr = (Array.isArray(groupIds) ? groupIds : String(groupIds).split(',')).filter(Boolean);
+            if (groupArr.length > 0) {
+                rFilters += ` AND c."groupId"::text = ANY($${params.length + 1}::text[])`;
+                brFilters += ` AND c."groupId"::text = ANY($${params.length + 1}::text[])`;
+                params.push(groupArr);
+            }
+        }
+
+        if (counterpartyIds) {
+            const cpArr = (Array.isArray(counterpartyIds) ? counterpartyIds : String(counterpartyIds).split(',')).filter(Boolean);
+            if (cpArr.length > 0) {
+                rFilters += ` AND c.id::text = ANY($${params.length + 1}::text[])`;
+                brFilters += ` AND c.id::text = ANY($${params.length + 1}::text[])`;
+                params.push(cpArr);
+            }
         }
 
         if (salesType) {
