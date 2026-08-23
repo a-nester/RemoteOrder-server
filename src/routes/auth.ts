@@ -31,6 +31,66 @@ router.post('/login', async (req: Request, res: Response) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
+        // Helper for device & region parsing
+        const headerIp = req.headers['x-forwarded-for'];
+        let rawIp = '127.0.0.1';
+        if (Array.isArray(headerIp) && headerIp.length > 0 && headerIp[0]) {
+            rawIp = headerIp[0];
+        } else if (typeof headerIp === 'string' && headerIp) {
+            rawIp = headerIp;
+        } else if (req.ip) {
+            rawIp = req.ip;
+        }
+        const ipAddress = (rawIp.split(',')[0] || rawIp).trim();
+        const userAgentStr = (req.headers['user-agent'] as string) || 'Unknown';
+        
+        const parseDeviceAndRegion = (uaStr: string, ip: string) => {
+            let device = 'Невідомий пристрій';
+            const ua = uaStr.toLowerCase();
+
+            if (ua.includes('iphone')) {
+                device = 'iPhone (iOS)';
+            } else if (ua.includes('ipad')) {
+                device = 'iPad (iPadOS)';
+            } else if (ua.includes('android')) {
+                device = ua.includes('mobile') ? 'Android Mobile' : 'Android Tablet';
+            } else if (ua.includes('macintosh') || ua.includes('mac os')) {
+                device = 'Mac Desktop';
+            } else if (ua.includes('windows')) {
+                device = 'Windows PC';
+            } else if (ua.includes('linux')) {
+                device = 'Linux PC';
+            }
+
+            let browser = '';
+            if (ua.includes('edg')) browser = 'Edge';
+            else if (ua.includes('chrome')) browser = 'Chrome';
+            else if (ua.includes('safari') && !ua.includes('chrome')) browser = 'Safari';
+            else if (ua.includes('firefox')) browser = 'Firefox';
+            else if (ua.includes('expo') || ua.includes('okhttp') || ua.includes('cfnetwork')) browser = 'RemoteOrder Mobile App';
+
+            if (browser && !device.includes(browser)) {
+                device = `${device} (${browser})`;
+            }
+
+            let region = 'Україна / Публічний IP';
+            const cleanIp = ip.replace(/^::ffff:/, '');
+            if (cleanIp === '127.0.0.1' || cleanIp === '::1' || cleanIp.startsWith('192.168.') || cleanIp.startsWith('10.') || cleanIp.startsWith('172.16.')) {
+                region = 'Локальна мережа (Local)';
+            }
+
+            return { device, region };
+        };
+
+        const { device, region } = parseDeviceAndRegion(userAgentStr, ipAddress);
+
+        // Record User Session in background
+        pool.query(
+            `INSERT INTO "UserSession" ("userId", "userEmail", "userRole", "ipAddress", "userAgent", "device", "region")
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [user.id, user.email, user.role, ipAddress, userAgentStr, device, region]
+        ).catch((err) => console.error('Failed to log user session:', err));
+
         // Generate Token
         // Payload matches the frontend User type roughly
         const token = jwt.sign(

@@ -20,6 +20,7 @@ import financeRoutes from './routes/finance.js';
 import collectionScheduleRoutes from './routes/collection-schedule.js';
 import pickingListRoutes from './routes/picking-list.js';
 import repostRoutes from './routes/repost.js';
+import sessionsRoutes from './routes/sessions.js';
 import territoryRoutes from './routes/territories.js';
 import backupRoutes from './routes/backupRoutes.js';
 import { BackupService } from './services/backupService.js';
@@ -53,6 +54,7 @@ app.use('/api/admin/users', usersRoutes);
 app.use('/api/admin/backups', backupRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/service/repost-documents', repostRoutes);
+app.use('/api/service/sessions', sessionsRoutes);
 app.use('/api/admin', priceTypeRoutes);
 app.use('/api/price-documents', priceDocumentRoutes);
 app.use('/api', counterpartyRoutes);
@@ -122,6 +124,7 @@ import { runMigration as addVisiblePriceTypesMigration } from './migrations/113_
 import { runMigration as addTernopilManagerMigration } from './migrations/114_add_ternopil_manager.js';
 import { runMigration as fixCollectionSchedulePerUserMigration } from './migrations/115_fix_collection_schedule_per_user.js';
 import { runMigration as repairCorruptedOrdersMigration } from './migrations/116_repair_corrupted_orders.js';
+import { runMigration as addUserSessionsMigration } from './migrations/116_add_user_sessions.js';
 
 const start = async () => {
   try {
@@ -158,6 +161,7 @@ const start = async () => {
     await addTernopilManagerMigration();
     await fixCollectionSchedulePerUserMigration();
     await repairCorruptedOrdersMigration();
+    await addUserSessionsMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
