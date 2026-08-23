@@ -76,14 +76,28 @@ router.post('/counterparties', async (req: AuthRequest, res: Response) => {
     try {
         const { name, address, phone, contactPerson, isBuyer, isSeller, priceTypeId, groupId, warehouseId, defaultSalesType, organizationId, territoryId } = req.body;
 
-        if (!name) return res.status(400).json({ error: 'Name is required' });
+        if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
+
+        // Protection against duplicate counterparty names (case-insensitive & trimmed)
+        const duplicateCheck = await pool.query(
+            `SELECT id FROM "Counterparty" 
+             WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) AND "isDeleted" = false
+             LIMIT 1`,
+            [name.trim()]
+        );
+
+        if (duplicateCheck.rows.length > 0) {
+            return res.status(409).json({ 
+                error: `Контрагент з назвою "${name.trim()}" вже існує у системі.` 
+            });
+        }
 
         const result = await pool.query(
             `INSERT INTO "Counterparty" 
             ("name", "address", "phone", "contactPerson", "isBuyer", "isSeller", "priceTypeId", "groupId", "warehouseId", "defaultSalesType", "organizationId", "territoryId") 
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
             RETURNING *`,
-            [name, address, phone, contactPerson, isBuyer || false, isSeller || false, priceTypeId || null, groupId || null, warehouseId || null, defaultSalesType || 'Готівковий', organizationId || null, territoryId || null]
+            [name.trim(), address, phone, contactPerson, isBuyer || false, isSeller || false, priceTypeId || null, groupId || null, warehouseId || null, defaultSalesType || 'Готівковий', organizationId || null, territoryId || null]
         );
         res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -97,6 +111,21 @@ router.put('/counterparties/:id', async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const { name, address, phone, contactPerson, isBuyer, isSeller, priceTypeId, groupId, warehouseId, defaultSalesType, organizationId, territoryId } = req.body;
+
+        if (name && name.trim()) {
+            const duplicateCheck = await pool.query(
+                `SELECT id FROM "Counterparty" 
+                 WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) AND id != $2 AND "isDeleted" = false
+                 LIMIT 1`,
+                [name.trim(), id]
+            );
+
+            if (duplicateCheck.rows.length > 0) {
+                return res.status(409).json({ 
+                    error: `Контрагент з назвою "${name.trim()}" вже існує у системі.` 
+                });
+            }
+        }
 
         const result = await pool.query(
             `UPDATE "Counterparty" 
