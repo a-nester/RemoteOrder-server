@@ -33,7 +33,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 router.get('/:filename/download', async (req: AuthRequest, res: Response) => {
   try {
     const filename = String(req.params.filename);
-    const filePath = BackupService.getBackupFilePath(filename);
+    const filePath = await BackupService.getBackupFilePath(filename);
 
     if (!filePath) {
       return res.status(404).json({ error: 'Backup file not found' });

@@ -125,6 +125,7 @@ import { runMigration as addTernopilManagerMigration } from './migrations/114_ad
 import { runMigration as fixCollectionSchedulePerUserMigration } from './migrations/115_fix_collection_schedule_per_user.js';
 import { runMigration as repairCorruptedOrdersMigration } from './migrations/116_repair_corrupted_orders.js';
 import { runMigration as addUserSessionsMigration } from './migrations/116_add_user_sessions.js';
+import { runMigration as addDatabaseBackupTableMigration } from './migrations/117_add_database_backup_table.js';
 
 const start = async () => {
   try {
@@ -162,6 +163,7 @@ const start = async () => {
     await fixCollectionSchedulePerUserMigration();
     await repairCorruptedOrdersMigration();
     await addUserSessionsMigration();
+    await addDatabaseBackupTableMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
