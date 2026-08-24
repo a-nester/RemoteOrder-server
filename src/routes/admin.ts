@@ -33,11 +33,30 @@ const upload = multer({ storage: storage });
 // Apply admin auth to all routes in this router
 router.use(adminAuth);
 
+const saveUploadedImagesToDB = async (files: any[]) => {
+    if (!files || files.length === 0) return;
+    for (const file of files) {
+        try {
+            const fileBuffer = fs.readFileSync(file.path);
+            const mimeType = file.mimetype || 'image/jpeg';
+            await pool.query(
+                `INSERT INTO "ProductImage" ("filename", "mimeType", "fileData")
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT ("filename") DO UPDATE SET "fileData" = EXCLUDED."fileData", "mimeType" = EXCLUDED."mimeType"`,
+                [file.filename, mimeType, fileBuffer]
+            );
+        } catch (imgErr) {
+            console.error(`Failed to persist product image ${file.filename} to DB:`, imgErr);
+        }
+    }
+};
+
 // ➕ Create Product
 router.post('/products', upload.array('photos', 5), async (req: Request, res: Response) => {
     try {
         const { name, unit, category, prices, inBox, barcode, packing, tara, weight } = req.body;
         const files = (req as any).files as any[] || [];
+        await saveUploadedImagesToDB(files);
         const photoUrls = files ? files.map((file: any) => `/uploads/${file.filename}`) : [];
 
         // Parse prices if sent as string (e.g. from FormData)
@@ -89,6 +108,7 @@ router.put('/products/:id', upload.array('photos', 5), async (req: Request, res:
         const { id } = req.params;
         const { name, unit, category, prices, existingPhotos, inBox, barcode, packing, tara, weight } = req.body;
         const files = (req as any).files as any[] || [];
+        await saveUploadedImagesToDB(files);
 
         const newPhotoUrls = files ? files.map((file: any) => `/uploads/${file.filename}`) : [];
 

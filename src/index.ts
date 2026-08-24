@@ -1,7 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { connectDB, disconnectDB } from './db.js';
+import fs from 'fs';
+import pool, { connectDB, disconnectDB } from './db.js';
 import { lockMiddleware } from './middleware/lockMiddleware.js';
 import syncRoutes from './routes/sync.js';
 import adminRoutes from './routes/admin.js';
@@ -37,6 +38,43 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+// Dynamic Image Serving & Auto-Recovery Handler for /uploads
+app.get('/uploads/:filename', async (req, res, next) => {
+  try {
+    const filename = req.params.filename;
+    const safeFilename = path.basename(filename);
+    const uploadDir = path.join(process.cwd(), 'uploads');
+    const filePath = path.join(uploadDir, safeFilename);
+
+    // 1. If image exists on local disk, serve it immediately
+    if (fs.existsSync(filePath)) {
+      return res.sendFile(filePath);
+    }
+
+    // 2. If missing on local disk (e.g. after container redeploy), restore from PostgreSQL ProductImage table
+    const dbRes = await pool.query(
+      `SELECT "mimeType", "fileData" FROM "ProductImage" WHERE "filename" = $1`,
+      [safeFilename]
+    );
+
+    if (dbRes.rows.length > 0) {
+      const { mimeType, fileData } = dbRes.rows[0];
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      fs.writeFileSync(filePath, fileData);
+
+      res.setHeader('Content-Type', mimeType || 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+      return res.send(fileData);
+    }
+  } catch (err) {
+    console.error('Error serving product image:', err);
+  }
+
+  res.status(404).send('Image not found');
+});
+
 app.use('/uploads', express.static('uploads'));
 app.use(lockMiddleware);
 
@@ -126,6 +164,7 @@ import { runMigration as fixCollectionSchedulePerUserMigration } from './migrati
 import { runMigration as repairCorruptedOrdersMigration } from './migrations/116_repair_corrupted_orders.js';
 import { runMigration as addUserSessionsMigration } from './migrations/116_add_user_sessions.js';
 import { runMigration as addDatabaseBackupTableMigration } from './migrations/117_add_database_backup_table.js';
+import { runMigration as addProductImageTableMigration } from './migrations/118_add_product_image_table.js';
 
 const start = async () => {
   try {
@@ -164,6 +203,7 @@ const start = async () => {
     await repairCorruptedOrdersMigration();
     await addUserSessionsMigration();
     await addDatabaseBackupTableMigration();
+    await addProductImageTableMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
