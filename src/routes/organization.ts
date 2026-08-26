@@ -7,7 +7,7 @@ const router = express.Router();
 // Get Default/First Organization Details
 router.get('/', userAuth, async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM "Organization" ORDER BY "createdAt" ASC LIMIT 1');
+        const result = await pool.query('SELECT * FROM "Organization" ORDER BY "isDefault" DESC, "createdAt" ASC LIMIT 1');
         if (result.rows.length === 0) {
             return res.status(404).json({ message: 'Organization not found' });
         }
@@ -21,10 +21,23 @@ router.get('/', userAuth, async (req, res) => {
 // Get All Organizations
 router.get('/all', userAuth, async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM "Organization" ORDER BY "name" ASC');
+        const result = await pool.query('SELECT * FROM "Organization" ORDER BY "isDefault" DESC, "name" ASC');
         res.json(result.rows);
     } catch (error) {
         console.error('Error fetching all organizations:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Set Organization as Default
+router.put('/set-default/:id', userAuth, async (req, res) => {
+    const { id } = req.params;
+    try {
+        await pool.query('UPDATE "Organization" SET "isDefault" = CASE WHEN id = $1 THEN TRUE ELSE FALSE END', [id]);
+        const result = await pool.query('SELECT * FROM "Organization" ORDER BY "isDefault" DESC, "name" ASC');
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error setting default organization:', error);
         res.status(500).json({ message: 'Server error' });
     }
 });

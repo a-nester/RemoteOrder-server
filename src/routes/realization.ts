@@ -61,11 +61,14 @@ router.get('/:id', userAuth, async (req, res) => {
     const user = (req as AuthRequest).user;
     try {
         let fetchSql = `
-            SELECT r.*, c.name as "counterpartyName", w.name as "warehouseName", o.name as "organizationName", o.requisites as "organizationRequisites"
+            SELECT r.*, c.name as "counterpartyName", w.name as "warehouseName", 
+                   COALESCE(o.name, def_o.name) as "organizationName", 
+                   COALESCE(o.requisites, def_o.requisites) as "organizationRequisites"
             FROM "Realization" r
             LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
             LEFT JOIN "Warehouse" w ON r."warehouseId" = w.id
             LEFT JOIN "Organization" o ON c."organizationId" = o.id
+            LEFT JOIN "Organization" def_o ON def_o."isDefault" = TRUE
             WHERE r.id = $1
         `;
         let values: any[] = [id];
