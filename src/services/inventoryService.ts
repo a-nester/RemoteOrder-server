@@ -1,18 +1,16 @@
-import pool from '../db.js';
+const round3 = (n: number) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
 
 export class InventoryService {
     /**
      * Add new stock batch
      */
-    /**
-     * Add new stock batch
-     */
     static async addStock(client: any, productId: string, quantity: number, enterPrice: number, goodsReceiptId?: string, targetDate?: Date, buyerReturnId?: string) {
+        const roundedQty = round3(quantity);
         const result = await client.query(
             `INSERT INTO "ProductBatch" ("productId", "quantityTotal", "quantityLeft", "enterPrice", "goodsReceiptId", "buyerReturnId", "createdAt", "updatedAt")
        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
        RETURNING *`,
-            [productId, quantity, quantity, enterPrice, goodsReceiptId || null, buyerReturnId || null, targetDate || new Date()]
+            [productId, roundedQty, roundedQty, enterPrice, goodsReceiptId || null, buyerReturnId || null, targetDate || new Date()]
         );
         return result.rows[0];
     }
@@ -36,18 +34,19 @@ export class InventoryService {
         );
 
         const batches = batchesResult.rows;
-        let remaining = quantityNeeded;
+        let remaining = round3(quantityNeeded);
         const deductions: { batchId: string, quantity: number, enterPrice: number }[] = [];
 
         for (const batch of batches) {
             if (remaining <= 0) break;
 
-            const take = Math.min(remaining, batch.quantityLeft);
+            const batchQtyLeft = round3(Number(batch.quantityLeft));
+            const take = round3(Math.min(remaining, batchQtyLeft));
 
             // Update batch
             await client.query(
                 `UPDATE "ProductBatch" 
-         SET "quantityLeft" = "quantityLeft" - $1, "updatedAt" = NOW() 
+         SET "quantityLeft" = ROUND(("quantityLeft"::numeric - $1::numeric), 3), "updatedAt" = NOW() 
          WHERE "id" = $2`,
                 [take, batch.id]
             );
@@ -58,7 +57,7 @@ export class InventoryService {
                 enterPrice: Number(batch.enterPrice)
             });
 
-            remaining -= take;
+            remaining = round3(remaining - take);
         }
 
         if (remaining > 0) {
