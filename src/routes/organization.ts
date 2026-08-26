@@ -31,16 +31,17 @@ router.get('/all', userAuth, async (req, res) => {
 
 // Create Organization
 router.post('/', userAuth, async (req, res) => {
-    const { name, fullDetails, salesTypes, categories, vatCostCoefficient } = req.body;
+    const { name, fullDetails, salesTypes, categories, vatCostCoefficient, requisites } = req.body;
     try {
         const result = await pool.query(
-            'INSERT INTO "Organization" (name, "fullDetails", "salesTypes", "categories", "vatCostCoefficient", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, NOW(), NOW()) RETURNING *',
+            'INSERT INTO "Organization" (name, "fullDetails", "salesTypes", "categories", "vatCostCoefficient", "requisites", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING *',
             [
                 name || 'Нова Організація', 
                 fullDetails || null, 
                 salesTypes ? JSON.stringify(salesTypes) : JSON.stringify(["Готівковий", "р/р ФОП", "з ПДВ"]),
                 categories ? JSON.stringify(categories) : null,
-                vatCostCoefficient !== undefined ? Number(vatCostCoefficient) : 1.0
+                vatCostCoefficient !== undefined ? Number(vatCostCoefficient) : 1.0,
+                requisites ? JSON.stringify(requisites) : '{}'
             ]
         );
         res.status(201).json(result.rows[0]);
@@ -52,7 +53,7 @@ router.post('/', userAuth, async (req, res) => {
 
 // Update Organization Details
 router.put('/', userAuth, async (req, res) => {
-    const { id, name, fullDetails, vatCostCoefficient } = req.body;
+    const { id, name, fullDetails, vatCostCoefficient, requisites } = req.body;
 
     try {
         const updates: string[] = [];
@@ -82,6 +83,11 @@ router.put('/', userAuth, async (req, res) => {
         if (vatCostCoefficient !== undefined) {
             updates.push(`"vatCostCoefficient" = $${paramIndex++}`);
             values.push(Number(vatCostCoefficient));
+        }
+
+        if (requisites !== undefined) {
+            updates.push(`"requisites" = $${paramIndex++}`);
+            values.push(JSON.stringify(requisites));
         }
 
         updates.push(`"updatedAt" = NOW()`);

@@ -61,7 +61,7 @@ router.get('/:id', userAuth, async (req, res) => {
     const user = (req as AuthRequest).user;
     try {
         let fetchSql = `
-            SELECT r.*, c.name as "counterpartyName", w.name as "warehouseName", o.name as "organizationName"
+            SELECT r.*, c.name as "counterpartyName", w.name as "warehouseName", o.name as "organizationName", o.requisites as "organizationRequisites"
             FROM "Realization" r
             LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
             LEFT JOIN "Warehouse" w ON r."warehouseId" = w.id

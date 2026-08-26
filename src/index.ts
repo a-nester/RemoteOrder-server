@@ -165,6 +165,7 @@ import { runMigration as repairCorruptedOrdersMigration } from './migrations/116
 import { runMigration as addUserSessionsMigration } from './migrations/116_add_user_sessions.js';
 import { runMigration as addDatabaseBackupTableMigration } from './migrations/117_add_database_backup_table.js';
 import { runMigration as addProductImageTableMigration } from './migrations/118_add_product_image_table.js';
+import { runMigration as addRequisitesToOrganizationMigration } from './migrations/119_add_requisites_to_organization.js';
 
 const start = async () => {
   try {
@@ -204,6 +205,7 @@ const start = async () => {
     await addUserSessionsMigration();
     await addDatabaseBackupTableMigration();
     await addProductImageTableMigration();
+    await addRequisitesToOrganizationMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
