@@ -18,11 +18,12 @@ export class RealizationService {
             const itemsRes = await client.query('SELECT * FROM "RealizationItem" WHERE "realizationId" = $1', [id]);
             const items = itemsRes.rows;
 
+            const isVat = doc.salesType === 'з ПДВ';
             let totalCostPrice = 0;
             let totalSellPrice = Number(doc.amount);
 
             let costMultiplier = 1.0;
-            if (doc.salesType === 'з ПДВ') {
+            if (isVat) {
                 const orgRes = await client.query(`
                     SELECT COALESCE(
                         (SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" > 1.0 ORDER BY "updatedAt" DESC LIMIT 1),

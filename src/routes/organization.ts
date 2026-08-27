@@ -123,7 +123,7 @@ router.put('/', userAuth, async (req, res) => {
             await pool.query(`
                 UPDATE "Realization" r
                 SET "profit" = r.amount - COALESCE((
-                    SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN $1 ELSE 1.0 END)
+                    SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN COALESCE(NULLIF(r."salesType", ''), 'Готівковий') = 'з ПДВ' THEN $1 ELSE 1.0 END)
                     FROM "RealizationItem" ri
                     JOIN "RealizationItemBatch" rib ON rib."realizationItemId" = ri.id
                     WHERE ri."realizationId" = r.id

@@ -9,7 +9,7 @@ export const runMigration = async () => {
     const resRealization = await client.query(`
       UPDATE "Realization" r
       SET "profit" = r.amount - COALESCE((
-          SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" > 1.0 ORDER BY "updatedAt" DESC LIMIT 1), 1.0) ELSE 1.0 END)
+          SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN COALESCE(NULLIF(r."salesType", ''), 'Готівковий') = 'з ПДВ' THEN COALESCE((SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" > 1.0 ORDER BY "updatedAt" DESC LIMIT 1), 1.0) ELSE 1.0 END)
           FROM "RealizationItem" ri
           JOIN "RealizationItemBatch" rib ON rib."realizationItemId" = ri.id
           WHERE ri."realizationId" = r.id
