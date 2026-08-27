@@ -308,10 +308,10 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                 rFilters += ` AND FALSE`;
                 if (includeReturns === 'true') brFilters += ` AND FALSE`;
             } else if (salesType === 'Не визначено') {
-                rFilters += ` AND (r."salesType" IS NULL OR r."salesType" = '')`;
+                rFilters += ` AND (r."salesType" IS NULL OR r."salesType" = '') AND c."defaultSalesType" IS NULL`;
                 brFilters += ` AND FALSE`;
             } else {
-                rFilters += ` AND r."salesType" = $${params.length + 1}`;
+                rFilters += ` AND COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = $${params.length + 1}`;
                 if (!(includeReturns === 'true' && salesType === 'Готівковий')) {
                     brFilters += ` AND FALSE`;
                 }
@@ -328,12 +328,12 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                     r.id,
                     r.amount as "netAmount",
                     (r.amount - COALESCE((
-                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
+                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
                         FROM "RealizationItem" ri
                         JOIN "RealizationItemBatch" rib ON rib."realizationItemId" = ri.id
                         WHERE ri."realizationId" = r.id
                     ), 0)) as "netProfit",
-                    ${groupBySalesType === 'true' ? 'COALESCE(NULLIF(r."salesType", \'\'), \'Не визначено\')' : "''"} as "salesType"
+                    ${groupBySalesType === 'true' ? "COALESCE(NULLIF(r.\"salesType\", ''), c.\"defaultSalesType\", 'Готівковий')" : "''"} as "salesType"
                 FROM "Realization" r
                 LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
                 WHERE r.status = 'POSTED' ${rFilters}
@@ -413,10 +413,10 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
             if (salesType === 'Повернення') {
                 rFilters += ` AND FALSE`;
             } else if (salesType === 'Не визначено') {
-                rFilters += ` AND (r."salesType" IS NULL OR r."salesType" = '')`;
+                rFilters += ` AND (r."salesType" IS NULL OR r."salesType" = '') AND c."defaultSalesType" IS NULL`;
                 brFilters += ` AND FALSE`;
             } else {
-                rFilters += ` AND r."salesType" = $${params.length + 1}`;
+                rFilters += ` AND COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = $${params.length + 1}`;
                 brFilters += ` AND FALSE`;
                 params.push(salesType);
             }
@@ -431,12 +431,13 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
                     ri.quantity as "netQty",
                     ri.total as "netAmount",
                     COALESCE((
-                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
+                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
                         FROM "RealizationItemBatch" rib
                         WHERE rib."realizationItemId" = ri.id
                     ), 0) as "netPurchaseCost"
                 FROM "Realization" r
                 JOIN "RealizationItem" ri ON r.id = ri."realizationId"
+                LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
                 WHERE r.status = 'POSTED' ${rFilters}
                 
                 UNION ALL
@@ -541,10 +542,10 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                 rFilters += ` AND FALSE`;
                 if (includeReturns === 'true') brFilters += ` AND FALSE`;
             } else if (salesType === 'Не визначено') {
-                rFilters += ` AND (r."salesType" IS NULL OR r."salesType" = '')`;
+                rFilters += ` AND (r."salesType" IS NULL OR r."salesType" = '') AND c."defaultSalesType" IS NULL`;
                 brFilters += ` AND FALSE`;
             } else {
-                rFilters += ` AND r."salesType" = $${params.length + 1}`;
+                rFilters += ` AND COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = $${params.length + 1}`;
                 if (!(includeReturns === 'true' && salesType === 'Готівковий')) {
                     brFilters += ` AND FALSE`;
                 }
@@ -562,16 +563,16 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                     ri.quantity as "netQty",
                     ri.total as "netAmount",
                     COALESCE((
-                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
+                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
                         FROM "RealizationItemBatch" rib
                         WHERE rib."realizationItemId" = ri.id
                     ), 0) as "netPurchaseCost",
                     ri.total - COALESCE((
-                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN r."salesType" = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
+                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
                         FROM "RealizationItemBatch" rib
                         WHERE rib."realizationItemId" = ri.id
                     ), 0) as "netProfit",
-                    ${groupBySalesType === 'true' ? 'COALESCE(NULLIF(r."salesType", \'\'), \'Не визначено\')' : "''"} as "salesType"
+                    ${groupBySalesType === 'true' ? "COALESCE(NULLIF(r.\"salesType\", ''), c.\"defaultSalesType\", 'Готівковий')" : "''"} as "salesType"
                 FROM "RealizationItem" ri
                 JOIN "Realization" r ON r.id = ri."realizationId"
                 LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
