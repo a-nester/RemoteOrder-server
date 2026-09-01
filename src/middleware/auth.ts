@@ -97,3 +97,22 @@ export const userAuth = async (req: AuthRequest, res: Response, next: NextFuncti
         return res.status(401).json({ error: 'Invalid token' });
     }
 };
+
+export const requirePermission = (permissionKey: string) => {
+    return (req: AuthRequest, res: Response, next: NextFunction) => {
+        if (!req.user) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        // Admins have full access to all operations
+        if (req.user.role === 'admin') {
+            return next();
+        }
+        // Check permission flag on user permissions JSON
+        if (req.user.permissions && req.user.permissions[permissionKey] === true) {
+            return next();
+        }
+        return res.status(403).json({ 
+            error: `Access denied. Permission required: ${permissionKey}` 
+        });
+    };
+};

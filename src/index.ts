@@ -167,6 +167,7 @@ import { runMigration as addDatabaseBackupTableMigration } from './migrations/11
 import { runMigration as addProductImageTableMigration } from './migrations/118_add_product_image_table.js';
 import { runMigration as addRequisitesToOrganizationMigration } from './migrations/119_add_requisites_to_organization.js';
 import { runMigration as addIsDefaultToOrganizationMigration } from './migrations/120_add_is_default_to_organization.js';
+import { runMigration as addAuditLogTableMigration } from './migrations/121_add_audit_log_table.js';
 
 const start = async () => {
   try {
@@ -208,6 +209,7 @@ const start = async () => {
     await addProductImageTableMigration();
     await addRequisitesToOrganizationMigration();
     await addIsDefaultToOrganizationMigration();
+    await addAuditLogTableMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);

@@ -1,9 +1,10 @@
 import express from 'express';
 import pool from '../db.js';
-import { userAuth, AuthRequest } from '../middleware/auth.js';
+import { userAuth, requirePermission, AuthRequest } from '../middleware/auth.js';
 import { generateDocNumber } from '../utils/docNumberGenerator.js';
 import { InventoryService } from '../services/inventoryService.js';
 import { RealizationService } from '../services/realizationService.js';
+import { AuditService } from '../services/auditService.js';
 import { getUserAllowedWarehouses, getUserAllowedTerritories } from '../utils/userUtils.js';
 
 const router = express.Router();
@@ -333,38 +334,82 @@ router.post('/:id/post', userAuth, async (req, res) => {
 
 // UNPOST (розпровести) Realization
 
-router.post('/:id/unpost', userAuth, async (req, res) => {
+// UNPOST (розпровести) Realization
+router.post('/:id/unpost', userAuth, requirePermission('canUnpostRealization'), async (req: AuthRequest, res) => {
+    const id = req.params.id as string;
+    const reasonStr = typeof req.body?.reason === 'string' ? req.body.reason : 'Документ розпроведено';
+    const client = await pool.connect();
     try {
-        const result = await RealizationService.unpost(req.params.id as string);
+        await client.query('BEGIN');
+
+        // Check for linked cash payment allocations
+        const paymentCheck = await client.query('SELECT COUNT(*) FROM "PaymentAllocation" WHERE "realizationId" = $1', [id]);
+        if (Number(paymentCheck.rows[0].count) > 0) {
+            throw new Error('Неможливо розпровести накладну: за нею зафіксовані касові оплати. Спочатку скасуйте або відв’яжіть ці оплати.');
+        }
+
+        const oldDoc = await client.query('SELECT * FROM "Realization" WHERE id = $1', [id]);
+
+        const result = await RealizationService.unpost(id);
+
+        // Audit Log
+        await AuditService.log(client, {
+            userId: req.user?.id,
+            userName: req.user?.name || req.user?.username,
+            userRole: req.user?.role,
+            action: 'UNPOST',
+            entity: 'Realization',
+            entityId: id,
+            oldData: oldDoc.rows[0] || null,
+            reason: reasonStr
+        });
+
+        await client.query('COMMIT');
         res.json(result);
     } catch (error: any) {
+        await client.query('ROLLBACK');
         console.error('UNPOST ERROR:', error);
         res.status(400).json({ message: error.message || 'Failed to unpost realization' });
+    } finally {
+        client.release();
     }
 });
 
 // Delete Realization
-router.delete('/:id', userAuth, async (req, res) => {
-    const { id } = req.params;
+router.delete('/:id', userAuth, requirePermission('canDeleteRealization'), async (req: AuthRequest, res) => {
+    const id = req.params.id as string;
+    const reason = (typeof req.body?.reason === 'string' ? req.body.reason : typeof req.query?.reason === 'string' ? req.query.reason : undefined) || 'Видалення накладної';
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         
-        const checkRes = await client.query('SELECT status FROM "Realization" WHERE id = $1', [id]);
+        const checkRes = await client.query('SELECT * FROM "Realization" WHERE id = $1', [id]);
         if ((checkRes.rowCount || 0) === 0) {
             throw new Error('Realization not found');
         }
         
-        const status = checkRes.rows[0].status;
-        if (status === 'POSTED') {
-            throw new Error('Cannot delete a posted realization');
+        const doc = checkRes.rows[0];
+        if (doc.status === 'POSTED') {
+            throw new Error('Cannot delete a posted realization. Unpost it first.');
         }
 
         await client.query(`
             UPDATE "Realization"
-            SET "isDeleted" = TRUE, "updatedAt" = NOW()
+            SET "isDeleted" = TRUE, "deletedBy" = $2, "deleteReason" = $3, "updatedAt" = NOW()
             WHERE id = $1
-        `, [id]);
+        `, [id, req.user?.id || null, reason]);
+
+        // Audit Log
+        await AuditService.log(client, {
+            userId: req.user?.id,
+            userName: req.user?.name || req.user?.username,
+            userRole: req.user?.role,
+            action: 'DELETE',
+            entity: 'Realization',
+            entityId: id,
+            oldData: doc,
+            reason: reason
+        });
 
         await client.query('COMMIT');
         res.json({ success: true, message: 'Realization deleted successfully' });
