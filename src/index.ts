@@ -23,6 +23,7 @@ import pickingListRoutes from './routes/picking-list.js';
 import repostRoutes from './routes/repost.js';
 import sessionsRoutes from './routes/sessions.js';
 import territoryRoutes from './routes/territories.js';
+import inventoryCountRoutes from './routes/inventoryCount.js';
 import backupRoutes from './routes/backupRoutes.js';
 import { BackupService } from './services/backupService.js';
 import path from 'path';
@@ -106,6 +107,7 @@ app.use('/api/finance', financeRoutes);
 app.use('/api/collection-schedule', collectionScheduleRoutes);
 app.use('/api/picking-list', pickingListRoutes);
 app.use('/api/territories', territoryRoutes);
+app.use('/api/inventory-count', inventoryCountRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -168,6 +170,7 @@ import { runMigration as addProductImageTableMigration } from './migrations/118_
 import { runMigration as addRequisitesToOrganizationMigration } from './migrations/119_add_requisites_to_organization.js';
 import { runMigration as addIsDefaultToOrganizationMigration } from './migrations/120_add_is_default_to_organization.js';
 import { runMigration as addAuditLogTableMigration } from './migrations/121_add_audit_log_table.js';
+import { runMigration as createInventoryCountTablesMigration } from './migrations/122_create_inventory_count_tables.js';
 
 const start = async () => {
   try {
@@ -210,6 +213,7 @@ const start = async () => {
     await addRequisitesToOrganizationMigration();
     await addIsDefaultToOrganizationMigration();
     await addAuditLogTableMigration();
+    await createInventoryCountTablesMigration();
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
