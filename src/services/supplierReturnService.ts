@@ -117,13 +117,30 @@ export class SupplierReturnService {
             if (!txClient) await client.query('BEGIN');
             
             const docRes = await client.query(`SELECT * FROM "SupplierReturn" WHERE id = $1 FOR UPDATE`, [id]);
-            if (docRes.rows.length === 0) throw new Error('Document not found');
+            if (docRes.rows.length === 0) throw new Error('Документ повернення постачальнику не знайдено');
             const doc = docRes.rows[0];
 
-            if (doc.status === 'POSTED') throw new Error('Document already posted');
+            if (doc.status === 'POSTED') throw new Error('Документ повернення постачальнику вже проведено');
+            if (!doc.warehouseId) throw new Error('Помилка проведення: у документі не вказано склад для повернення товару');
 
-            const itemsRes = await client.query(`SELECT * FROM "SupplierReturnItem" WHERE "supplierReturnId" = $1 ORDER BY "sortOrder" ASC`, [id]);
+            const itemsRes = await client.query(`
+                SELECT sri.*, p.name as "productName" 
+                FROM "SupplierReturnItem" sri 
+                LEFT JOIN "Product" p ON p.id = sri."productId" 
+                WHERE sri."supplierReturnId" = $1 
+                ORDER BY sri."sortOrder" ASC
+            `, [id]);
             const items = itemsRes.rows;
+
+            if (!items || items.length === 0) {
+                throw new Error('Неможливо провести документ: документ повернення постачальнику не містить жодного товару');
+            }
+
+            for (const item of items) {
+                if (Number(item.quantity) <= 0) {
+                    throw new Error(`Неможливо провести повернення: для товару "${item.productName || item.productId}" вказано некоректну кількість (${item.quantity})`);
+                }
+            }
 
             for (const item of items) {
                 // Deduct stock using FIFO logic, returns an array of deducted batches

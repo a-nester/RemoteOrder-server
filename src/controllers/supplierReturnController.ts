@@ -1,5 +1,21 @@
 import { SupplierReturnService } from '../services/supplierReturnService.js';
 
+function formatSupplierReturnError(error: any): string {
+    if (!error) return 'Невідома помилка';
+    const rawMessage = error.message || String(error);
+
+    try {
+        const parsed = JSON.parse(rawMessage);
+        if (parsed && parsed.code === 'INSUFFICIENT_STOCK') {
+            return `Недостатньо товару "${parsed.productName || 'Товар'}" на складі для повернення. Потрібно: ${parsed.needed}, в наявності: ${parsed.available || 0}`;
+        }
+    } catch (e) {
+        // Not JSON
+    }
+
+    return rawMessage;
+}
+
 export class SupplierReturnController {
 
     // GET /api/supplier-returns
@@ -13,9 +29,10 @@ export class SupplierReturnController {
             };
             const docs = await SupplierReturnService.getAll(filters);
             res.json(docs);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Get SupplierReturns error:', error);
-            res.status(500).json({ error: 'Failed to fetch' });
+            const msg = formatSupplierReturnError(error);
+            res.status(500).json({ error: msg, message: msg });
         }
     }
 
@@ -23,11 +40,12 @@ export class SupplierReturnController {
     static async getById(req: any, res: any) {
         try {
             const doc = await SupplierReturnService.getById(req.params.id);
-            if (!doc) return res.status(404).json({ error: 'Not found' });
+            if (!doc) return res.status(404).json({ error: 'Документ не знайдено' });
             res.json(doc);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Get SupplierReturn error:', error);
-            res.status(500).json({ error: 'Failed to fetch details' });
+            const msg = formatSupplierReturnError(error);
+            res.status(500).json({ error: msg, message: msg });
         }
     }
 
@@ -44,9 +62,10 @@ export class SupplierReturnController {
 
             const doc = await SupplierReturnService.create(data, userId);
             res.status(201).json(doc);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Create SupplierReturn error:', error);
-            res.status(500).json({ error: 'Failed to create' });
+            const msg = formatSupplierReturnError(error);
+            res.status(400).json({ error: msg, message: msg });
         }
     }
 
@@ -63,10 +82,8 @@ export class SupplierReturnController {
             res.json(doc);
         } catch (error: any) {
             console.error('Update SupplierReturn error:', error);
-            if (error.message === 'Cannot edit POSTED document' || error.message === 'Document not found') {
-                return res.status(400).json({ error: error.message });
-            }
-            res.status(500).json({ error: 'Failed to update' });
+            const msg = formatSupplierReturnError(error);
+            res.status(400).json({ error: msg, message: msg });
         }
     }
 
@@ -77,18 +94,8 @@ export class SupplierReturnController {
             res.json(doc);
         } catch (error: any) {
             console.error('Post SupplierReturn error:', error);
-            try {
-                const parsed = JSON.parse(error.message);
-                if (parsed.code === 'INSUFFICIENT_STOCK') {
-                    return res.status(400).json({ error: parsed });
-                }
-            } catch (e) {
-                // fallthrough
-            }
-            if (error.message === 'Document already posted' || error.message === 'Document not found') {
-                return res.status(400).json({ error: error.message });
-            }
-            res.status(500).json({ error: 'Failed to post document' });
+            const msg = formatSupplierReturnError(error);
+            res.status(400).json({ error: msg, message: msg });
         }
     }
 
@@ -99,10 +106,8 @@ export class SupplierReturnController {
             res.json(doc);
         } catch (error: any) {
             console.error('Unpost SupplierReturn error:', error);
-            if (error.message === 'Document is not posted' || error.message === 'Document not found') {
-                return res.status(400).json({ error: error.message });
-            }
-            res.status(500).json({ error: 'Failed to unpost document' });
+            const msg = formatSupplierReturnError(error);
+            res.status(400).json({ error: msg, message: msg });
         }
     }
 
@@ -113,10 +118,8 @@ export class SupplierReturnController {
             res.json({ success: true });
         } catch (error: any) {
             console.error('Delete SupplierReturn error:', error);
-            if (error.message === 'Cannot delete a POSTED document' || error.message === 'Document not found') {
-                return res.status(400).json({ error: error.message });
-            }
-            res.status(500).json({ error: 'Failed to delete' });
+            const msg = formatSupplierReturnError(error);
+            res.status(400).json({ error: msg, message: msg });
         }
     }
 }
