@@ -111,15 +111,32 @@ export class BuyerReturnService {
         const client = txClient || await pool.connect();
         try {
             const docRes = await client.query(`SELECT * FROM "BuyerReturn" WHERE id = $1`, [id]);
-            if (docRes.rows.length === 0) throw new Error('Document not found');
+            if (docRes.rows.length === 0) throw new Error('Документ повернення від покупця не знайдено');
             const doc = docRes.rows[0];
 
-            if (doc.status === 'POSTED') throw new Error('Document already posted');
+            if (doc.status === 'POSTED') throw new Error('Документ повернення вже проведено');
+            if (!doc.warehouseId) throw new Error('Помилка проведення: у документі не вказано склад для повернення товару');
 
             if (!txClient) await client.query('BEGIN');
 
-            const itemsRes = await client.query(`SELECT * FROM "BuyerReturnItem" WHERE "buyerReturnId" = $1 ORDER BY "sortOrder" ASC`, [id]);
+            const itemsRes = await client.query(`
+                SELECT bri.*, p.name as "productName" 
+                FROM "BuyerReturnItem" bri 
+                LEFT JOIN "Product" p ON p.id = bri."productId" 
+                WHERE bri."buyerReturnId" = $1 
+                ORDER BY bri."sortOrder" ASC
+            `, [id]);
             const items = itemsRes.rows;
+
+            if (!items || items.length === 0) {
+                throw new Error('Неможливо провести документ: документ повернення не містить жодного товару');
+            }
+
+            for (const item of items) {
+                if (Number(item.quantity) <= 0) {
+                    throw new Error(`Неможливо провести повернення: для товару "${item.productName || item.productId}" вказано некоректну кількість (${item.quantity})`);
+                }
+            }
 
             // We treat BuyerReturn similar to goods receipts for FIFO, returning stock in at the RETURN price.
             // Profit for this specific action is fully negative equivalent to the total amount refunded.

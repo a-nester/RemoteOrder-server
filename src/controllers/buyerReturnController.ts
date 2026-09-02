@@ -46,9 +46,10 @@ export class BuyerReturnController {
 
             const doc = await BuyerReturnService.create(data, userId);
             res.status(201).json(doc);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Create BuyerReturn error:', error);
-            res.status(500).json({ error: 'Failed to create' });
+            const msg = error?.message || 'Failed to create document';
+            res.status(400).json({ error: msg, message: msg });
         }
     }
 
@@ -65,10 +66,8 @@ export class BuyerReturnController {
             res.json(doc);
         } catch (error: any) {
             console.error('Update BuyerReturn error:', error);
-            if (error.message === 'Cannot edit POSTED document' || error.message === 'Document not found') {
-                return res.status(400).json({ error: error.message });
-            }
-            res.status(500).json({ error: 'Failed to update' });
+            const msg = error?.message || 'Failed to update document';
+            res.status(400).json({ error: msg, message: msg });
         }
     }
 
@@ -79,10 +78,8 @@ export class BuyerReturnController {
             res.json(doc);
         } catch (error: any) {
             console.error('Post BuyerReturn error:', error);
-            if (error.message === 'Document already posted' || error.message === 'Document not found') {
-                return res.status(400).json({ error: error.message });
-            }
-            res.status(500).json({ error: 'Failed to post document' });
+            const msg = error?.message || 'Failed to post document';
+            res.status(400).json({ error: msg, message: msg });
         }
     }
 
@@ -93,10 +90,8 @@ export class BuyerReturnController {
             res.json(doc);
         } catch (error: any) {
             console.error('Unpost BuyerReturn error:', error);
-            if (error.message === 'Document is not posted' || error.message === 'Document not found') {
-                return res.status(400).json({ error: error.message });
-            }
-            res.status(500).json({ error: 'Failed to unpost document' });
+            const msg = error?.message || 'Failed to unpost document';
+            res.status(400).json({ error: msg, message: msg });
         }
     }
 
@@ -107,10 +102,8 @@ export class BuyerReturnController {
             res.json({ success: true });
         } catch (error: any) {
             console.error('Delete BuyerReturn error:', error);
-            if (error.message === 'Cannot delete a POSTED document' || error.message === 'Document not found') {
-                return res.status(400).json({ error: error.message });
-            }
-            res.status(500).json({ error: 'Failed to delete' });
+            const msg = error?.message || 'Failed to delete document';
+            res.status(400).json({ error: msg, message: msg });
         }
     }
 }
