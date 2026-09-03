@@ -304,18 +304,24 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
         }
 
         if (salesType) {
-            if (salesType === 'Повернення') {
-                rFilters += ` AND FALSE`;
-                if (includeReturns === 'true') brFilters += ` AND FALSE`;
-            } else if (salesType === 'Не визначено') {
-                rFilters += ` AND (r."salesType" IS NULL OR r."salesType" = '') AND c."defaultSalesType" IS NULL`;
-                brFilters += ` AND FALSE`;
-            } else {
-                rFilters += ` AND COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = $${params.length + 1}`;
-                if (!(includeReturns === 'true' && salesType === 'Готівковий')) {
-                    brFilters += ` AND FALSE`;
+            const stArr = (Array.isArray(salesType) ? salesType : String(salesType).split(',')).map((s: any) => String(s).trim()).filter(Boolean);
+            if (stArr.length > 0) {
+                if (stArr.includes('Повернення') && stArr.length === 1) {
+                    rFilters += ` AND FALSE`;
+                    if (includeReturns === 'true') brFilters += ` AND FALSE`;
+                } else if (stArr.includes('Не визначено')) {
+                    rFilters += ` AND ((r."salesType" IS NULL OR r."salesType" = '') AND c."defaultSalesType" IS NULL OR COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = ANY($${params.length + 1}::text[]))`;
+                    params.push(stArr);
+                    if (!(includeReturns === 'true' && stArr.includes('Готівковий'))) {
+                        brFilters += ` AND FALSE`;
+                    }
+                } else {
+                    rFilters += ` AND COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = ANY($${params.length + 1}::text[])`;
+                    params.push(stArr);
+                    if (!(includeReturns === 'true' && stArr.includes('Готівковий'))) {
+                        brFilters += ` AND FALSE`;
+                    }
                 }
-                params.push(salesType);
             }
         }
 
@@ -438,15 +444,19 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
         }
 
         if (salesType) {
-            if (salesType === 'Повернення') {
-                rFilters += ` AND FALSE`;
-            } else if (salesType === 'Не визначено') {
-                rFilters += ` AND (r."salesType" IS NULL OR r."salesType" = '') AND c."defaultSalesType" IS NULL`;
-                brFilters += ` AND FALSE`;
-            } else {
-                rFilters += ` AND COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = $${params.length + 1}`;
-                brFilters += ` AND FALSE`;
-                params.push(salesType);
+            const stArr = (Array.isArray(salesType) ? salesType : String(salesType).split(',')).map((s: any) => String(s).trim()).filter(Boolean);
+            if (stArr.length > 0) {
+                if (stArr.includes('Повернення') && stArr.length === 1) {
+                    rFilters += ` AND FALSE`;
+                } else if (stArr.includes('Не визначено')) {
+                    rFilters += ` AND ((r."salesType" IS NULL OR r."salesType" = '') AND c."defaultSalesType" IS NULL OR COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = ANY($${params.length + 1}::text[]))`;
+                    brFilters += ` AND FALSE`;
+                    params.push(stArr);
+                } else {
+                    rFilters += ` AND COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = ANY($${params.length + 1}::text[])`;
+                    brFilters += ` AND FALSE`;
+                    params.push(stArr);
+                }
             }
         }
 
@@ -580,18 +590,24 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
         }
 
         if (salesType) {
-            if (salesType === 'Повернення') {
-                rFilters += ` AND FALSE`;
-                if (includeReturns === 'true') brFilters += ` AND FALSE`;
-            } else if (salesType === 'Не визначено') {
-                rFilters += ` AND (r."salesType" IS NULL OR r."salesType" = '') AND c."defaultSalesType" IS NULL`;
-                brFilters += ` AND FALSE`;
-            } else {
-                rFilters += ` AND COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = $${params.length + 1}`;
-                if (!(includeReturns === 'true' && salesType === 'Готівковий')) {
-                    brFilters += ` AND FALSE`;
+            const stArr = (Array.isArray(salesType) ? salesType : String(salesType).split(',')).map((s: any) => String(s).trim()).filter(Boolean);
+            if (stArr.length > 0) {
+                if (stArr.includes('Повернення') && stArr.length === 1) {
+                    rFilters += ` AND FALSE`;
+                    if (includeReturns === 'true') brFilters += ` AND FALSE`;
+                } else if (stArr.includes('Не визначено')) {
+                    rFilters += ` AND ((r."salesType" IS NULL OR r."salesType" = '') AND c."defaultSalesType" IS NULL OR COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = ANY($${params.length + 1}::text[]))`;
+                    params.push(stArr);
+                    if (!(includeReturns === 'true' && stArr.includes('Готівковий'))) {
+                        brFilters += ` AND FALSE`;
+                    }
+                } else {
+                    rFilters += ` AND COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = ANY($${params.length + 1}::text[])`;
+                    params.push(stArr);
+                    if (!(includeReturns === 'true' && stArr.includes('Готівковий'))) {
+                        brFilters += ` AND FALSE`;
+                    }
                 }
-                params.push(salesType);
             }
         }
 
