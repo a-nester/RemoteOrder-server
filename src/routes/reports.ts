@@ -327,6 +327,18 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                     r."counterpartyId",
                     r.id,
                     r.amount as "netAmount",
+                    COALESCE((
+                        SELECT SUM(rib.quantity * rib."enterPrice")
+                        FROM "RealizationItem" ri
+                        JOIN "RealizationItemBatch" rib ON rib."realizationItemId" = ri.id
+                        WHERE ri."realizationId" = r.id
+                    ), 0) as "netCleanCost",
+                    COALESCE((
+                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
+                        FROM "RealizationItem" ri
+                        JOIN "RealizationItemBatch" rib ON rib."realizationItemId" = ri.id
+                        WHERE ri."realizationId" = r.id
+                    ), 0) as "netCostWithVat",
                     (r.amount - COALESCE((
                         SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
                         FROM "RealizationItem" ri
@@ -344,6 +356,20 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                     br."counterpartyId",
                     br.id,
                     -br."totalAmount" as "netAmount",
+                    -COALESCE((
+                        SELECT SUM(brb.quantity * pb."enterPrice")
+                        FROM "BuyerReturnItem" bri
+                        JOIN "BuyerReturnItemBatch" brb ON brb."buyerReturnItemId" = bri.id
+                        JOIN "ProductBatch" pb ON pb.id = brb."productBatchId"
+                        WHERE bri."buyerReturnId" = br.id
+                    ), 0) as "netCleanCost",
+                    -COALESCE((
+                        SELECT SUM(brb.quantity * pb."enterPrice")
+                        FROM "BuyerReturnItem" bri
+                        JOIN "BuyerReturnItemBatch" brb ON brb."buyerReturnItemId" = bri.id
+                        JOIN "ProductBatch" pb ON pb.id = brb."productBatchId"
+                        WHERE bri."buyerReturnId" = br.id
+                    ), 0) as "netCostWithVat",
                     -br.profit as "netProfit",
                     ${includeReturns === 'true' ? "'Готівковий'" : "'Повернення'"} as "salesType"
                 FROM "BuyerReturn" br
@@ -356,6 +382,8 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
                 ${groupBySalesType === 'true' ? 'bd."salesType",' : ''}
                 COUNT(bd.id) as "documentsCount",
                 SUM(bd."netAmount") as "totalAmount",
+                SUM(bd."netCleanCost") as "totalCleanCost",
+                SUM(bd."netCostWithVat") as "totalCostWithVat",
                 SUM(bd."netProfit") as "totalProfit"
             FROM BaseDocs bd
             LEFT JOIN "Counterparty" c ON bd."counterpartyId" = c.id
@@ -431,6 +459,11 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
                     ri.quantity as "netQty",
                     ri.total as "netAmount",
                     COALESCE((
+                        SELECT SUM(rib.quantity * rib."enterPrice")
+                        FROM "RealizationItemBatch" rib
+                        WHERE rib."realizationItemId" = ri.id
+                    ), 0) as "netCleanCost",
+                    COALESCE((
                         SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
                         FROM "RealizationItemBatch" rib
                         WHERE rib."realizationItemId" = ri.id
@@ -451,6 +484,12 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
                         FROM "BuyerReturnItemBatch" brb
                         JOIN "ProductBatch" pb ON pb.id = brb."productBatchId"
                         WHERE brb."buyerReturnItemId" = bri.id
+                    ), 0) as "netCleanCost",
+                    -COALESCE((
+                        SELECT SUM(brb.quantity * pb."enterPrice")
+                        FROM "BuyerReturnItemBatch" brb
+                        JOIN "ProductBatch" pb ON pb.id = brb."productBatchId"
+                        WHERE brb."buyerReturnItemId" = bri.id
                     ), 0) as "netPurchaseCost"
                 FROM "BuyerReturn" br
                 JOIN "BuyerReturnItem" bri ON br.id = bri."buyerReturnId"
@@ -461,6 +500,9 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
                 p.unit,
                 SUM(bi."netQty") as "quantity",
                 SUM(bi."netAmount") as "amount",
+                SUM(bi."netCleanCost") as "totalCleanCost",
+                SUM(bi."netPurchaseCost") as "totalCostWithVat",
+                SUM(bi."netPurchaseCost") as "totalPurchaseCost",
                 SUM(bi."netAmount" - bi."netPurchaseCost") as "profit",
                 CASE WHEN SUM(bi."netQty") > 0 THEN SUM(bi."netAmount") / SUM(bi."netQty") ELSE 0 END as "averagePrice"
             FROM BaseItems bi
@@ -563,6 +605,11 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                     ri.quantity as "netQty",
                     ri.total as "netAmount",
                     COALESCE((
+                        SELECT SUM(rib.quantity * rib."enterPrice")
+                        FROM "RealizationItemBatch" rib
+                        WHERE rib."realizationItemId" = ri.id
+                    ), 0) as "netCleanCost",
+                    COALESCE((
                         SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
                         FROM "RealizationItemBatch" rib
                         WHERE rib."realizationItemId" = ri.id
@@ -591,6 +638,13 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                         JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
                         WHERE brib."buyerReturnItemId" = bri.id
                         LIMIT 1
+                    ), 0) * bri.quantity) as "netCleanCost",
+                    -(COALESCE((
+                        SELECT pb."enterPrice"
+                        FROM "BuyerReturnItemBatch" brib
+                        JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
+                        WHERE brib."buyerReturnItemId" = bri.id
+                        LIMIT 1
                     ), 0) * bri.quantity) as "netPurchaseCost",
                     (COALESCE((
                         SELECT pb."enterPrice"
@@ -609,14 +663,20 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                 p.id as "productId",
                 p.name as "productName",
                 p.category as "productCategory",
+                p.unit as "unit",
                 ${groupBySalesType === 'true' ? 'bi."salesType",' : ''}
+                SUM(bi."netQty") as "quantity",
                 SUM(bi."netQty") as "totalQuantity",
+                SUM(bi."netAmount") as "amount",
                 SUM(bi."netAmount") as "totalAmount",
+                SUM(bi."netCleanCost") as "cleanCost",
+                SUM(bi."netPurchaseCost") as "costWithVat",
                 SUM(bi."netPurchaseCost") as "totalPurchaseCost",
+                SUM(bi."netProfit") as "profit",
                 SUM(bi."netProfit") as "totalProfit"
             FROM BaseItems bi
             LEFT JOIN "Product" p ON p.id::text = bi."productId"
-            GROUP BY p.id, p.name, p.category ${groupBySalesType === 'true' ? ', bi."salesType"' : ''}
+            GROUP BY p.id, p.name, p.category, p.unit ${groupBySalesType === 'true' ? ', bi."salesType"' : ''}
             ORDER BY "totalAmount" DESC NULLS LAST
         `;
 
