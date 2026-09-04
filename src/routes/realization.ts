@@ -343,14 +343,14 @@ router.post('/:id/unpost', userAuth, requirePermission('canUnpostRealization'), 
         await client.query('BEGIN');
 
         // Check for linked cash payment allocations
-        const paymentCheck = await client.query('SELECT COUNT(*) FROM "PaymentAllocation" WHERE "realizationId" = $1', [id]);
+        const paymentCheck = await client.query('SELECT COUNT(*) FROM "PaymentAllocation" WHERE "documentId" = $1 AND "documentType" = \'REALIZATION\'', [id]);
         if (Number(paymentCheck.rows[0].count) > 0) {
             throw new Error('Неможливо розпровести накладну: за нею зафіксовані касові оплати. Спочатку скасуйте або відв’яжіть ці оплати.');
         }
 
         const oldDoc = await client.query('SELECT * FROM "Realization" WHERE id = $1', [id]);
 
-        const result = await RealizationService.unpost(id);
+        const result = await RealizationService.unpost(id, client);
 
         // Audit Log
         await AuditService.log(client, {
