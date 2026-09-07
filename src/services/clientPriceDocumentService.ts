@@ -133,13 +133,18 @@ export class ClientPriceDocumentService {
                 p.name as "productName",
                 p.unit as "productUnit",
                 p.prices as "productPrices",
-                COALESCE(p."enterPrice", 0) as "costPrice",
+                COALESCE(pb."enterPrice", 0) as "costPrice",
                 COALESCE(cdm."discountPercent", 0) as "currentDiscountPercent"
         `;
 
         if (validPriceTypeId) {
             query += `, COALESCE(pj."newPrice", 0) as "pjBasePrice"
             FROM "Product" p
+            LEFT JOIN (
+                SELECT DISTINCT ON ("productId") "productId", "enterPrice"
+                FROM "ProductBatch"
+                ORDER BY "productId", "createdAt" DESC
+            ) pb ON pb."productId" = p.id
             LEFT JOIN (
                 SELECT DISTINCT ON ("productId") "productId", "newPrice"
                 FROM "PriceJournal"
@@ -153,11 +158,17 @@ export class ClientPriceDocumentService {
         } else {
             query += `, 0 as "pjBasePrice"
             FROM "Product" p
+            LEFT JOIN (
+                SELECT DISTINCT ON ("productId") "productId", "enterPrice"
+                FROM "ProductBatch"
+                ORDER BY "productId", "createdAt" DESC
+            ) pb ON pb."productId" = p.id
             LEFT JOIN "CounterpartyDiscountMatrix" cdm 
                 ON cdm."productId" = p.id AND cdm."counterpartyId" = $1
             WHERE COALESCE(p."isDeleted", false) = false
             ORDER BY p.name ASC`;
         }
+
 
         const queryParams = validPriceTypeId ? [counterpartyId, validPriceTypeId] : [counterpartyId];
         const itemsRes = await pool.query(query, queryParams);

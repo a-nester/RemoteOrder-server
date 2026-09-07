@@ -13,18 +13,19 @@ export class InventoryCountService {
             SELECT 
                 p.id as "productId",
                 p.name as "productName",
-                p.code as "productCode",
+                COALESCE(p.barcode, SUBSTRING(p.id::text, 1, 8)) as "productCode",
                 p.unit,
-                COALESCE(p."enterPrice", 0) as "price",
+                COALESCE(MAX(pb."enterPrice"), 0) as "price",
                 COALESCE(SUM(pb."quantityLeft"), 0) as "accountingQty"
             FROM "Product" p
             LEFT JOIN "ProductBatch" pb ON pb."productId" = p.id AND pb."quantityLeft" > 0
             LEFT JOIN "GoodsReceipt" gr ON pb."goodsReceiptId" = gr.id
             LEFT JOIN "BuyerReturn" br ON pb."buyerReturnId" = br.id
             WHERE (COALESCE(gr."warehouseId", br."warehouseId") = $1 OR pb.id IS NULL)
-              AND p."isDeleted" = FALSE
-            GROUP BY p.id, p.name, p.code, p.unit, p."enterPrice"
+              AND COALESCE(p."isDeleted", false) = FALSE
+            GROUP BY p.id, p.name, p.barcode, p.unit
             ORDER BY p.name ASC
+
         `;
         const res = await pool.query(query, [warehouseId]);
         return res.rows.map(r => ({

@@ -13,9 +13,9 @@ export class StockTransferService {
             SELECT 
                 p.id as "productId",
                 p.name as "productName",
-                p.code as "productCode",
+                COALESCE(p.barcode, SUBSTRING(p.id::text, 1, 8)) as "productCode",
                 p.unit,
-                COALESCE(p."enterPrice", 0) as "price",
+                COALESCE(pb."enterPrice", 0) as "price",
                 COALESCE(SUM(pb."quantityLeft"), 0) as "availableQty"
             FROM "Product" p
             JOIN "ProductBatch" pb ON pb."productId" = p.id AND pb."quantityLeft" > 0
@@ -23,9 +23,10 @@ export class StockTransferService {
             LEFT JOIN "BuyerReturn" br ON pb."buyerReturnId" = br.id
             LEFT JOIN "StockTransfer" st ON pb."stockTransferId" = st.id
             WHERE COALESCE(gr."warehouseId", br."warehouseId", st."toWarehouseId") = $1
-              AND p."isDeleted" = FALSE
-            GROUP BY p.id, p.name, p.code, p.unit, p."enterPrice"
+              AND COALESCE(p."isDeleted", false) = FALSE
+            GROUP BY p.id, p.name, p.barcode, p.unit, pb."enterPrice"
             ORDER BY p.name ASC
+
         `;
         const res = await pool.query(query, [warehouseId]);
         return res.rows.map(r => ({
