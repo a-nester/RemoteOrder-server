@@ -22,7 +22,8 @@ export class InventoryCountService {
             LEFT JOIN "GoodsReceipt" gr ON pb."goodsReceiptId" = gr.id
             LEFT JOIN "BuyerReturn" br ON pb."buyerReturnId" = br.id
             WHERE (COALESCE(gr."warehouseId", br."warehouseId") = $1 OR pb.id IS NULL)
-              AND COALESCE(p."isDeleted", false) = FALSE
+              AND COALESCE(p."deleted", false) = FALSE
+
             GROUP BY p.id, p.name, p.barcode, p.unit
             ORDER BY p.name ASC
 

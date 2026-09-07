@@ -153,7 +153,7 @@ export class ClientPriceDocumentService {
             ) pj ON pj."productId" = p.id
             LEFT JOIN "CounterpartyDiscountMatrix" cdm 
                 ON cdm."productId" = p.id AND cdm."counterpartyId" = $1
-            WHERE COALESCE(p."isDeleted", false) = false
+            WHERE COALESCE(p."deleted", false) = false
             ORDER BY p.name ASC`;
         } else {
             query += `, 0 as "pjBasePrice"
@@ -165,10 +165,9 @@ export class ClientPriceDocumentService {
             ) pb ON pb."productId" = p.id
             LEFT JOIN "CounterpartyDiscountMatrix" cdm 
                 ON cdm."productId" = p.id AND cdm."counterpartyId" = $1
-            WHERE COALESCE(p."isDeleted", false) = false
+            WHERE COALESCE(p."deleted", false) = false
             ORDER BY p.name ASC`;
         }
-
 
         const queryParams = validPriceTypeId ? [counterpartyId, validPriceTypeId] : [counterpartyId];
         const itemsRes = await pool.query(query, queryParams);

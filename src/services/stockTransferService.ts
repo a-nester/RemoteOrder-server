@@ -23,7 +23,8 @@ export class StockTransferService {
             LEFT JOIN "BuyerReturn" br ON pb."buyerReturnId" = br.id
             LEFT JOIN "StockTransfer" st ON pb."stockTransferId" = st.id
             WHERE COALESCE(gr."warehouseId", br."warehouseId", st."toWarehouseId") = $1
-              AND COALESCE(p."isDeleted", false) = FALSE
+              AND COALESCE(p."deleted", false) = FALSE
+
             GROUP BY p.id, p.name, p.barcode, p.unit, pb."enterPrice"
             ORDER BY p.name ASC
 
