@@ -82,7 +82,7 @@ export class ClientPriceDocumentService {
         const itemsRes = await pool.query(`
             SELECT 
                 cpdi.*,
-                p.code as "productCode",
+                COALESCE(p.barcode, SUBSTRING(p.id::text, 1, 8)) as "productCode",
                 p.name as "productName",
                 p.unit as "productUnit"
             FROM "ClientPriceDocumentItem" cpdi
@@ -129,7 +129,7 @@ export class ClientPriceDocumentService {
         let query = `
             SELECT 
                 p.id as "productId",
-                p.code as "productCode",
+                COALESCE(p.barcode, SUBSTRING(p.id::text, 1, 8)) as "productCode",
                 p.name as "productName",
                 p.unit as "productUnit",
                 p.prices as "productPrices",
@@ -413,7 +413,7 @@ export class ClientPriceDocumentService {
      */
     static async getActiveDiscounts(counterpartyId: string) {
         const res = await pool.query(`
-            SELECT cdm.*, p.code as "productCode", p.name as "productName"
+            SELECT cdm.*, COALESCE(p.barcode, SUBSTRING(p.id::text, 1, 8)) as "productCode", p.name as "productName"
             FROM "CounterpartyDiscountMatrix" cdm
             JOIN "Product" p ON cdm."productId" = p.id
             WHERE cdm."counterpartyId" = $1
