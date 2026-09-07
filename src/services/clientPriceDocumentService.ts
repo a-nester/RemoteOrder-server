@@ -29,7 +29,7 @@ export class ClientPriceDocumentService {
             LEFT JOIN "PriceType" pt ON cpd."priceTypeId" = pt.id
             LEFT JOIN "User" u1 ON cpd."createdBy" = u1.id
             LEFT JOIN "User" u2 ON cpd."postedBy" = u2.id
-            WHERE cpd."isDeleted" = false
+            WHERE COALESCE(cpd."isDeleted", false) = false
         `;
         const params: any[] = [];
         let paramIdx = 1;
@@ -72,7 +72,7 @@ export class ClientPriceDocumentService {
             LEFT JOIN "PriceType" pt ON cpd."priceTypeId" = pt.id
             LEFT JOIN "User" u1 ON cpd."createdBy" = u1.id
             LEFT JOIN "User" u2 ON cpd."postedBy" = u2.id
-            WHERE cpd.id = $1 AND cpd."isDeleted" = false
+            WHERE cpd.id = $1 AND COALESCE(cpd."isDeleted", false) = false
         `, [id]);
 
         if (docRes.rows.length === 0) {
@@ -95,10 +95,10 @@ export class ClientPriceDocumentService {
             ...docRes.rows[0],
             items: itemsRes.rows.map(item => ({
                 ...item,
-                costPrice: Number(item.costPrice),
-                basePrice: Number(item.basePrice),
-                discountPercent: Number(item.discountPercent),
-                finalPrice: Number(item.finalPrice)
+                costPrice: Number(item.costPrice) || 0,
+                basePrice: Number(item.basePrice) || 0,
+                discountPercent: Number(item.discountPercent) || 0,
+                finalPrice: Number(item.finalPrice) || 0
             }))
         };
     }
@@ -108,6 +108,10 @@ export class ClientPriceDocumentService {
      * Loads active products, cost price, base price for client's price type
      */
     static async prepareItems(counterpartyId: string) {
+        if (!counterpartyId || typeof counterpartyId !== 'string') {
+            throw new Error('Невалідний ID контрагента');
+        }
+
         const cpRes = await pool.query(`
             SELECT c.id, c.name, c."priceTypeId", pt.name as "priceTypeName", pt.slug as "priceTypeSlug"
             FROM "Counterparty" c
@@ -120,9 +124,9 @@ export class ClientPriceDocumentService {
         }
 
         const counterparty = cpRes.rows[0];
+        const validPriceTypeId = (counterparty.priceTypeId && String(counterparty.priceTypeId).trim()) ? String(counterparty.priceTypeId).trim() : null;
 
-        // Fetch products with cost prices (Product.enterPrice) and base prices
-        const itemsRes = await pool.query(`
+        let query = `
             SELECT 
                 p.id as "productId",
                 p.code as "productCode",
@@ -130,35 +134,48 @@ export class ClientPriceDocumentService {
                 p.unit as "productUnit",
                 p.prices as "productPrices",
                 COALESCE(p."enterPrice", 0) as "costPrice",
-                COALESCE(pj."newPrice", 0) as "pjBasePrice",
                 COALESCE(cdm."discountPercent", 0) as "currentDiscountPercent"
+        `;
+
+        if (validPriceTypeId) {
+            query += `, COALESCE(pj."newPrice", 0) as "pjBasePrice"
             FROM "Product" p
             LEFT JOIN (
                 SELECT DISTINCT ON ("productId") "productId", "newPrice"
                 FROM "PriceJournal"
-                WHERE $2::uuid IS NOT NULL AND "priceTypeId" = $2::uuid
+                WHERE "priceTypeId" = $2
                 ORDER BY "productId", "effectiveDate" DESC, "createdAt" DESC
             ) pj ON pj."productId" = p.id
             LEFT JOIN "CounterpartyDiscountMatrix" cdm 
                 ON cdm."productId" = p.id AND cdm."counterpartyId" = $1
-            WHERE p."isDeleted" = false
-            ORDER BY p.name ASC
-        `, [counterpartyId, counterparty.priceTypeId || null]);
+            WHERE COALESCE(p."isDeleted", false) = false
+            ORDER BY p.name ASC`;
+        } else {
+            query += `, 0 as "pjBasePrice"
+            FROM "Product" p
+            LEFT JOIN "CounterpartyDiscountMatrix" cdm 
+                ON cdm."productId" = p.id AND cdm."counterpartyId" = $1
+            WHERE COALESCE(p."isDeleted", false) = false
+            ORDER BY p.name ASC`;
+        }
+
+        const queryParams = validPriceTypeId ? [counterpartyId, validPriceTypeId] : [counterpartyId];
+        const itemsRes = await pool.query(query, queryParams);
 
         return {
             counterpartyId: counterparty.id,
             counterpartyName: counterparty.name,
-            priceTypeId: counterparty.priceTypeId,
+            priceTypeId: counterparty.priceTypeId || null,
             priceTypeName: counterparty.priceTypeName || 'Не призначено',
             items: itemsRes.rows.map(row => {
-                const costPrice = Number(row.costPrice);
+                const costPrice = Number(row.costPrice) || 0;
                 const pjPrice = Number(row.pjBasePrice) || 0;
                 const pPrices = row.productPrices;
 
                 let basePrice = pjPrice;
                 if (!basePrice && pPrices && typeof pPrices === 'object') {
-                    if (counterparty.priceTypeId && pPrices[counterparty.priceTypeId] !== undefined) {
-                        basePrice = Number(pPrices[counterparty.priceTypeId]) || 0;
+                    if (validPriceTypeId && pPrices[validPriceTypeId] !== undefined) {
+                        basePrice = Number(pPrices[validPriceTypeId]) || 0;
                     } else if (counterparty.priceTypeSlug && pPrices[counterparty.priceTypeSlug] !== undefined) {
                         basePrice = Number(pPrices[counterparty.priceTypeSlug]) || 0;
                     } else if (pPrices['standard'] !== undefined) {
@@ -166,15 +183,15 @@ export class ClientPriceDocumentService {
                     }
                 }
 
-                const discountPercent = Number(row.currentDiscountPercent);
+                const discountPercent = Number(row.currentDiscountPercent) || 0;
                 const discountFactor = (100 - discountPercent) / 100;
                 const finalPrice = Math.round(basePrice * discountFactor * 100) / 100;
 
                 return {
                     productId: row.productId,
-                    productCode: row.productCode,
-                    productName: row.productName,
-                    productUnit: row.productUnit,
+                    productCode: row.productCode || '',
+                    productName: row.productName || '',
+                    productUnit: row.productUnit || 'шт',
                     costPrice,
                     basePrice,
                     discountPercent,
@@ -192,12 +209,10 @@ export class ClientPriceDocumentService {
         try {
             await client.query('BEGIN');
 
-            // Find counterparty priceTypeId
             const cpRes = await client.query(`SELECT "priceTypeId" FROM "Counterparty" WHERE id = $1`, [dto.counterpartyId]);
             if (cpRes.rows.length === 0) throw new Error('Контрагента не знайдено');
             const priceTypeId = cpRes.rows[0].priceTypeId;
 
-            // Generate document number
             const countRes = await client.query('SELECT COUNT(*) FROM "ClientPriceDocument"');
             const nextNum = Number(countRes.rows[0].count) + 1;
             const docNumber = `ЦК-${String(nextNum).padStart(6, '0')}`;
@@ -212,7 +227,6 @@ export class ClientPriceDocumentService {
 
             const doc = docRes.rows[0];
 
-            // Filter items with discountPercent > 0 or explicit overrides
             if (dto.items && dto.items.length > 0) {
                 let sortOrder = 0;
                 for (const item of dto.items) {
@@ -261,7 +275,6 @@ export class ClientPriceDocumentService {
                 WHERE id = $3
             `, [dto.date, dto.comment || null, id]);
 
-            // Replace items
             await client.query('DELETE FROM "ClientPriceDocumentItem" WHERE "documentId" = $1', [id]);
 
             if (dto.items && dto.items.length > 0) {
@@ -306,7 +319,6 @@ export class ClientPriceDocumentService {
 
             if (doc.status === 'APPLIED') throw new Error('Документ вже проведено');
 
-            // Fetch items
             const itemsRes = await client.query('SELECT * FROM "ClientPriceDocumentItem" WHERE "documentId" = $1', [id]);
 
             for (const item of itemsRes.rows) {
@@ -324,7 +336,6 @@ export class ClientPriceDocumentService {
                             "updatedAt" = NOW()
                     `, [doc.counterpartyId, item.productId, discountPercent, id]);
                 } else {
-                    // Discount removed
                     await client.query(`
                         DELETE FROM "CounterpartyDiscountMatrix"
                         WHERE "counterpartyId" = $1 AND "productId" = $2
@@ -362,7 +373,6 @@ export class ClientPriceDocumentService {
 
             if (doc.status !== 'APPLIED') throw new Error('Документ не проведено');
 
-            // Remove all matrix records created by this document
             await client.query(`
                 DELETE FROM "CounterpartyDiscountMatrix"
                 WHERE "documentId" = $1
