@@ -105,7 +105,7 @@ export class ClientPriceDocumentService {
 
     /**
      * Prepare initial items list for a selected counterparty
-     * Loads active products, cost price, base price for client's price type
+     * Loads active products filtered by organization categories if configured
      */
     static async prepareItems(counterpartyId: string) {
         if (!counterpartyId || typeof counterpartyId !== 'string') {
@@ -113,8 +113,16 @@ export class ClientPriceDocumentService {
         }
 
         const cpRes = await pool.query(`
-            SELECT c.id, c.name, c."priceTypeId", pt.name as "priceTypeName", pt.slug as "priceTypeSlug"
+            SELECT 
+                c.id, 
+                c.name, 
+                c."priceTypeId", 
+                c."organizationId", 
+                o.categories as "orgCategories", 
+                pt.name as "priceTypeName", 
+                pt.slug as "priceTypeSlug"
             FROM "Counterparty" c
+            LEFT JOIN "Organization" o ON c."organizationId" = o.id
             LEFT JOIN "PriceType" pt ON c."priceTypeId" = pt.id
             WHERE c.id = $1
         `, [counterpartyId]);
@@ -125,6 +133,19 @@ export class ClientPriceDocumentService {
 
         const counterparty = cpRes.rows[0];
         const validPriceTypeId = (counterparty.priceTypeId && String(counterparty.priceTypeId).trim()) ? String(counterparty.priceTypeId).trim() : null;
+
+        // Parse organization categories if configured
+        let orgCategoriesList: string[] = [];
+        if (counterparty.orgCategories) {
+            if (Array.isArray(counterparty.orgCategories)) {
+                orgCategoriesList = counterparty.orgCategories.filter(Boolean);
+            } else if (typeof counterparty.orgCategories === 'string') {
+                try {
+                    const parsed = JSON.parse(counterparty.orgCategories);
+                    if (Array.isArray(parsed)) orgCategoriesList = parsed.filter(Boolean);
+                } catch (e) {}
+            }
+        }
 
         let query = `
             SELECT 
@@ -137,6 +158,9 @@ export class ClientPriceDocumentService {
                 COALESCE(cdm."discountPercent", 0) as "currentDiscountPercent"
         `;
 
+        const queryParams: any[] = [counterpartyId];
+        let paramIdx = 2;
+
         if (validPriceTypeId) {
             query += `, COALESCE(pj."newPrice", 0) as "pjBasePrice"
             FROM "Product" p
@@ -148,13 +172,13 @@ export class ClientPriceDocumentService {
             LEFT JOIN (
                 SELECT DISTINCT ON ("productId") "productId", "newPrice"
                 FROM "PriceJournal"
-                WHERE "priceTypeId" = $2
+                WHERE "priceTypeId" = $${paramIdx++}
                 ORDER BY "productId", "effectiveDate" DESC, "createdAt" DESC
             ) pj ON pj."productId" = p.id
             LEFT JOIN "CounterpartyDiscountMatrix" cdm 
                 ON cdm."productId" = p.id AND cdm."counterpartyId" = $1
-            WHERE COALESCE(p."deleted", false) = false
-            ORDER BY p.name ASC`;
+            WHERE COALESCE(p."deleted", false) = false`;
+            queryParams.push(validPriceTypeId);
         } else {
             query += `, 0 as "pjBasePrice"
             FROM "Product" p
@@ -165,11 +189,16 @@ export class ClientPriceDocumentService {
             ) pb ON pb."productId" = p.id
             LEFT JOIN "CounterpartyDiscountMatrix" cdm 
                 ON cdm."productId" = p.id AND cdm."counterpartyId" = $1
-            WHERE COALESCE(p."deleted", false) = false
-            ORDER BY p.name ASC`;
+            WHERE COALESCE(p."deleted", false) = false`;
         }
 
-        const queryParams = validPriceTypeId ? [counterpartyId, validPriceTypeId] : [counterpartyId];
+        if (orgCategoriesList.length > 0) {
+            query += ` AND p.category = ANY($${paramIdx++}::text[])`;
+            queryParams.push(orgCategoriesList);
+        }
+
+        query += ` ORDER BY p.name ASC`;
+
         const itemsRes = await pool.query(query, queryParams);
 
         return {
