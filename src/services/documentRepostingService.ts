@@ -140,14 +140,13 @@ export class DocumentRepostingService {
                     }
                 }
 
-                this.emitLog(`Phase 1: Скидання ${priceDocs.rowCount} Встановлень цін...`);
+                this.emitLog(`Phase 1: Розпроведення ${priceDocs.rowCount} Встановлень цін...`);
                 for (const row of priceDocs.rows) {
                     try {
-                        await client.query(`DELETE FROM "PriceJournal" WHERE "reason" = 'Price Document Applied' AND "createdAt" = $1`, [row.created_at]);
-                        await client.query(`UPDATE "PriceDocument" SET status = 'DRAFT' WHERE id = $1`, [row.id]);
-                        this.emitLog(`Скинуто: ${formatDoc('PRICE_DOCUMENT', row)}`);
+                        await PriceDocumentService.unpost(row.id, client);
+                        this.emitLog(`Розпроведено: ${formatDoc('PRICE_DOCUMENT', row)}`);
                     } catch (err: any) {
-                        const msg = `Помилка скидання ${formatDoc('PRICE_DOCUMENT', row)}: ${err.message}`;
+                        const msg = `Помилка розпроведення ${formatDoc('PRICE_DOCUMENT', row)}: ${err.message}`;
                         this.emitLog(msg);
                         throw new Error(msg);
                     }

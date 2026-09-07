@@ -137,81 +137,24 @@ export const updateDocumentItems = async (req: Request, res: Response): Promise<
 };
 
 export const applyDocument = async (req: Request, res: Response): Promise<any> => {
-    const { id } = req.params;
-    const client = await pool.connect();
-
+    const id = req.params.id as string;
     try {
-        await client.query('BEGIN');
-
-        // 1. Get Document
-        const docResult = await client.query(`
-            SELECT pd.*, pt.slug as "targetPriceSlug"
-            FROM "PriceDocument" pd
-            JOIN "PriceType" pt ON pd."targetPriceTypeId" = pt.id
-            WHERE pd.id = $1
-        `, [id]);
-
-        if (docResult.rows.length === 0) throw new Error('Document not found');
-        const doc = docResult.rows[0];
-
-        // if (doc.status !== 'DRAFT') throw new Error('Document already applied');
-
-        const targetSlug = doc.targetPriceSlug;
-
-        // 2. Get Items
-        const itemsResult = await client.query('SELECT * FROM "PriceDocumentItem" WHERE "documentId" = $1', [id]);
-        const items = itemsResult.rows;
-
-        // 3. Loop items and update prices
-        for (const item of items) {
-            const { productId, price } = item;
-
-            // Get current product state for logging old price
-            const productRes = await client.query('SELECT prices FROM "Product" WHERE id = $1', [productId]);
-            if (productRes.rows.length === 0) continue; // Skip if product deleted?
-
-            const currentPrices = productRes.rows[0].prices || {};
-            const oldPrice = Number(currentPrices[targetSlug] || 0);
-
-            // Log to PriceJournal (Manual SQL to avoid circular dependency or import issues, or can try to use PriceService if adjusted)
-            // Let's use direct SQL for atomicity within this transaction
-            await client.query(`
-                INSERT INTO "PriceJournal" (
-                    "productId", "priceTypeId", "oldPrice", "newPrice", 
-                    "effectiveDate", "createdBy", "reason", "createdAt"
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            `, [
-                productId,
-                doc.targetPriceTypeId,
-                oldPrice,
-                price,
-                doc.date, // Effective date is document date
-                null, // User ID not passed currently, maybe from req.user?
-                `Price Document Applied`,
-                doc.date // Set createdAt to match the document date
-            ]);
-
-            // Update Product
-            currentPrices[targetSlug] = price;
-            await client.query(`
-                UPDATE "Product"
-                SET "prices" = $1, "updatedAt" = NOW()
-                WHERE id = $2
-            `, [JSON.stringify(currentPrices), productId]);
-        }
-
-        // 4. Update Document Status
-        await client.query('UPDATE "PriceDocument" SET status = \'APPLIED\', "updatedAt" = NOW() WHERE id = $1', [id]);
-
-        await client.query('COMMIT');
-        res.json({ success: true });
+        const result = await PriceDocumentService.apply(id);
+        res.json(result);
     } catch (error) {
-        await client.query('ROLLBACK');
         console.error('Error applying price document:', error);
-        res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to apply document' });
-    } finally {
-        client.release();
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to apply document' });
+    }
+};
+
+export const unpostDocument = async (req: Request, res: Response): Promise<any> => {
+    const id = req.params.id as string;
+    try {
+        const result = await PriceDocumentService.unpost(id);
+        res.json(result);
+    } catch (error) {
+        console.error('Error unposting price document:', error);
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to unpost document' });
     }
 };
 
