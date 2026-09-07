@@ -25,7 +25,9 @@ import sessionsRoutes from './routes/sessions.js';
 import territoryRoutes from './routes/territories.js';
 import inventoryCountRoutes from './routes/inventoryCount.js';
 import stockTransferRoutes from './routes/stockTransfer.js';
+import clientPriceDocumentRoutes from './routes/clientPriceDocumentRoutes.js';
 import backupRoutes from './routes/backupRoutes.js';
+
 import { BackupService } from './services/backupService.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -97,7 +99,9 @@ app.use('/api/service/repost-documents', repostRoutes);
 app.use('/api/service/sessions', sessionsRoutes);
 app.use('/api/admin', priceTypeRoutes);
 app.use('/api/price-documents', priceDocumentRoutes);
+app.use('/api/client-price-documents', clientPriceDocumentRoutes);
 app.use('/api', counterpartyRoutes);
+
 app.use('/api/organization', organizationRoutes);
 app.use('/api/realizations', realizationRoutes);
 app.use('/api/goods-receipt', goodsReceiptRoutes);
@@ -174,6 +178,8 @@ import { runMigration as addIsDefaultToOrganizationMigration } from './migration
 import { runMigration as addAuditLogTableMigration } from './migrations/121_add_audit_log_table.js';
 import { runMigration as createInventoryCountTablesMigration } from './migrations/122_create_inventory_count_tables.js';
 import { runMigration as createStockTransferTablesMigration } from './migrations/123_create_stock_transfer_tables.js';
+import { runMigration as createClientPriceTablesMigration } from './migrations/124_create_client_price_tables.js';
+
 
 const start = async () => {
   try {
@@ -218,6 +224,8 @@ const start = async () => {
     await addAuditLogTableMigration();
     await createInventoryCountTablesMigration();
     await createStockTransferTablesMigration();
+    await createClientPriceTablesMigration();
+
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`🚀 Server is running on port ${PORT}`);
