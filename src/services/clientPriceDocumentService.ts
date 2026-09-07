@@ -118,13 +118,16 @@ export class ClientPriceDocumentService {
                 c.name, 
                 c."priceTypeId", 
                 c."organizationId", 
-                o.categories as "orgCategories", 
+                COALESCE(o.categories, def_o.categories) as "orgCategories", 
                 pt.name as "priceTypeName", 
                 pt.slug as "priceTypeSlug"
             FROM "Counterparty" c
             LEFT JOIN "Organization" o ON c."organizationId" = o.id
+            LEFT JOIN "Organization" def_o ON (def_o."isDefault" = TRUE OR def_o.id IS NOT NULL)
             LEFT JOIN "PriceType" pt ON c."priceTypeId" = pt.id
             WHERE c.id = $1
+            ORDER BY def_o."isDefault" DESC NULLS LAST, def_o."createdAt" ASC
+            LIMIT 1
         `, [counterpartyId]);
 
         if (cpRes.rows.length === 0) {
@@ -136,14 +139,19 @@ export class ClientPriceDocumentService {
 
         // Parse organization categories if configured
         let orgCategoriesList: string[] = [];
-        if (counterparty.orgCategories) {
-            if (Array.isArray(counterparty.orgCategories)) {
-                orgCategoriesList = counterparty.orgCategories.filter(Boolean);
-            } else if (typeof counterparty.orgCategories === 'string') {
+        const rawCategories = counterparty.orgCategories;
+        if (rawCategories) {
+            if (Array.isArray(rawCategories)) {
+                orgCategoriesList = rawCategories.map((c: any) => String(c).trim()).filter(Boolean);
+            } else if (typeof rawCategories === 'string') {
                 try {
-                    const parsed = JSON.parse(counterparty.orgCategories);
-                    if (Array.isArray(parsed)) orgCategoriesList = parsed.filter(Boolean);
-                } catch (e) {}
+                    const parsed = JSON.parse(rawCategories);
+                    if (Array.isArray(parsed)) {
+                        orgCategoriesList = parsed.map((c: any) => String(c).trim()).filter(Boolean);
+                    }
+                } catch (e) {
+                    orgCategoriesList = rawCategories.split(',').map(s => s.trim()).filter(Boolean);
+                }
             }
         }
 
@@ -193,8 +201,9 @@ export class ClientPriceDocumentService {
         }
 
         if (orgCategoriesList.length > 0) {
-            query += ` AND p.category = ANY($${paramIdx++}::text[])`;
-            queryParams.push(orgCategoriesList);
+            const lowerCategories = orgCategoriesList.map(c => c.toLowerCase());
+            query += ` AND LOWER(TRIM(p.category)) = ANY($${paramIdx++}::text[])`;
+            queryParams.push(lowerCategories);
         }
 
         query += ` ORDER BY p.name ASC`;
