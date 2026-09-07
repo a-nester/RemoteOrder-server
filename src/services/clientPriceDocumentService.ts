@@ -22,8 +22,8 @@ export class ClientPriceDocumentService {
                 cpd.*,
                 c.name as "counterpartyName",
                 pt.name as "priceTypeName",
-                u1.name as "createdByName",
-                u2.name as "postedByName"
+                u1.email as "createdByName",
+                u2.email as "postedByName"
             FROM "ClientPriceDocument" cpd
             JOIN "Counterparty" c ON cpd."counterpartyId" = c.id
             LEFT JOIN "PriceType" pt ON cpd."priceTypeId" = pt.id
@@ -65,8 +65,8 @@ export class ClientPriceDocumentService {
                 cpd.*,
                 c.name as "counterpartyName",
                 pt.name as "priceTypeName",
-                u1.name as "createdByName",
-                u2.name as "postedByName"
+                u1.email as "createdByName",
+                u2.email as "postedByName"
             FROM "ClientPriceDocument" cpd
             JOIN "Counterparty" c ON cpd."counterpartyId" = c.id
             LEFT JOIN "PriceType" pt ON cpd."priceTypeId" = pt.id
@@ -109,7 +109,7 @@ export class ClientPriceDocumentService {
      */
     static async prepareItems(counterpartyId: string) {
         const cpRes = await pool.query(`
-            SELECT c.id, c.name, c."priceTypeId", pt.name as "priceTypeName"
+            SELECT c.id, c.name, c."priceTypeId", pt.name as "priceTypeName", pt.slug as "priceTypeSlug"
             FROM "Counterparty" c
             LEFT JOIN "PriceType" pt ON c."priceTypeId" = pt.id
             WHERE c.id = $1
@@ -121,28 +121,29 @@ export class ClientPriceDocumentService {
 
         const counterparty = cpRes.rows[0];
 
-        // Fetch products with cost prices (Product.enterPrice) and base prices (PriceJournal latest for priceTypeId)
+        // Fetch products with cost prices (Product.enterPrice) and base prices
         const itemsRes = await pool.query(`
             SELECT 
                 p.id as "productId",
                 p.code as "productCode",
                 p.name as "productName",
                 p.unit as "productUnit",
+                p.prices as "productPrices",
                 COALESCE(p."enterPrice", 0) as "costPrice",
-                COALESCE(pj."newPrice", 0) as "basePrice",
+                COALESCE(pj."newPrice", 0) as "pjBasePrice",
                 COALESCE(cdm."discountPercent", 0) as "currentDiscountPercent"
             FROM "Product" p
             LEFT JOIN (
                 SELECT DISTINCT ON ("productId") "productId", "newPrice"
                 FROM "PriceJournal"
-                WHERE "priceTypeId" = $2
+                WHERE $2::uuid IS NOT NULL AND "priceTypeId" = $2::uuid
                 ORDER BY "productId", "effectiveDate" DESC, "createdAt" DESC
             ) pj ON pj."productId" = p.id
             LEFT JOIN "CounterpartyDiscountMatrix" cdm 
                 ON cdm."productId" = p.id AND cdm."counterpartyId" = $1
             WHERE p."isDeleted" = false
             ORDER BY p.name ASC
-        `, [counterpartyId, counterparty.priceTypeId]);
+        `, [counterpartyId, counterparty.priceTypeId || null]);
 
         return {
             counterpartyId: counterparty.id,
@@ -151,7 +152,20 @@ export class ClientPriceDocumentService {
             priceTypeName: counterparty.priceTypeName || 'Не призначено',
             items: itemsRes.rows.map(row => {
                 const costPrice = Number(row.costPrice);
-                const basePrice = Number(row.basePrice);
+                const pjPrice = Number(row.pjBasePrice) || 0;
+                const pPrices = row.productPrices;
+
+                let basePrice = pjPrice;
+                if (!basePrice && pPrices && typeof pPrices === 'object') {
+                    if (counterparty.priceTypeId && pPrices[counterparty.priceTypeId] !== undefined) {
+                        basePrice = Number(pPrices[counterparty.priceTypeId]) || 0;
+                    } else if (counterparty.priceTypeSlug && pPrices[counterparty.priceTypeSlug] !== undefined) {
+                        basePrice = Number(pPrices[counterparty.priceTypeSlug]) || 0;
+                    } else if (pPrices['standard'] !== undefined) {
+                        basePrice = Number(pPrices['standard']) || 0;
+                    }
+                }
+
                 const discountPercent = Number(row.currentDiscountPercent);
                 const discountFactor = (100 - discountPercent) / 100;
                 const finalPrice = Math.round(basePrice * discountFactor * 100) / 100;
@@ -400,4 +414,3 @@ export class ClientPriceDocumentService {
         }));
     }
 }
-

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { adminAuth } from '../middleware/auth.js';
 import {
     getAllClientPriceDocuments,
     getClientPriceDocumentById,
@@ -13,6 +14,8 @@ import {
 
 const router = Router();
 
+router.use(adminAuth);
+
 router.get('/', getAllClientPriceDocuments);
 router.get('/prepare-items', prepareClientPriceDocumentItems);
 router.get('/discounts/:counterpartyId', getActiveClientDiscounts);
@@ -24,4 +27,3 @@ router.post('/:id/unpost', unpostClientPriceDocument);
 router.delete('/:id', deleteClientPriceDocument);
 
 export default router;
-
