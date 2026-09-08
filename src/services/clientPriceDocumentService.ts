@@ -369,14 +369,28 @@ export class ClientPriceDocumentService {
                 throw new Error('Неможливо редагувати проведений документ. Спочатку розпроведіть його.');
             }
 
+            let priceTypeId = undefined;
+            if (dto.counterpartyId) {
+                const cpRes = await client.query(`SELECT "priceTypeId" FROM "Counterparty" WHERE id = $1`, [dto.counterpartyId]);
+                if (cpRes.rows.length > 0) {
+                    priceTypeId = cpRes.rows[0].priceTypeId;
+                }
+            }
+
             const roundingMethod = dto.roundingMethod || checkRes.rows[0].roundingMethod || 'UP';
             const roundingValue = dto.roundingValue !== undefined ? (dto.roundingValue !== null ? Number(dto.roundingValue) : null) : (checkRes.rows[0].roundingValue ? Number(checkRes.rows[0].roundingValue) : null);
 
             await client.query(`
                 UPDATE "ClientPriceDocument"
-                SET "date" = COALESCE($1, "date"), "comment" = $2, "roundingMethod" = $3, "roundingValue" = $4, "updatedAt" = NOW()
-                WHERE id = $5
-            `, [dto.date, dto.comment || null, roundingMethod, roundingValue, id]);
+                SET "date" = COALESCE($1, "date"), 
+                    "comment" = $2, 
+                    "roundingMethod" = $3, 
+                    "roundingValue" = $4,
+                    "counterpartyId" = COALESCE($5, "counterpartyId"),
+                    "priceTypeId" = COALESCE($6, "priceTypeId"),
+                    "updatedAt" = NOW()
+                WHERE id = $7
+            `, [dto.date, dto.comment || null, roundingMethod, roundingValue, dto.counterpartyId || null, priceTypeId || null, id]);
 
             await client.query('DELETE FROM "ClientPriceDocumentItem" WHERE "documentId" = $1', [id]);
 
