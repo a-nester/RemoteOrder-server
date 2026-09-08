@@ -194,8 +194,15 @@ export const copyDocument = async (req: Request, res: Response): Promise<any> =>
         const itemsResult = await client.query('SELECT * FROM "PriceDocumentItem" WHERE "documentId" = $1', [id]);
         const originalItems = itemsResult.rows;
 
-        // 4. Insert Copied Items
+        // 4. Insert Copied Items (Deduplicate by productId)
+        const uniqueItemsMap = new Map<string, any>();
         for (const item of originalItems) {
+            if (item && item.productId) {
+                uniqueItemsMap.set(item.productId, item);
+            }
+        }
+
+        for (const item of uniqueItemsMap.values()) {
             await client.query(`
                 INSERT INTO "PriceDocumentItem" ("documentId", "productId", "price")
                 VALUES ($1, $2, $3)

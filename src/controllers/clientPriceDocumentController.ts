@@ -100,6 +100,18 @@ export const deleteClientPriceDocument = async (req: Request, res: Response): Pr
     }
 };
 
+export const copyClientPriceDocument = async (req: Request, res: Response): Promise<any> => {
+    try {
+        const id = req.params.id as string;
+        const userId = (req as any).user?.id;
+        const doc = await ClientPriceDocumentService.copy(id, userId);
+        res.status(201).json(doc);
+    } catch (error: any) {
+        console.error('Error in copyClientPriceDocument:', error);
+        res.status(400).json({ error: error.message || 'Помилка копіювання документа' });
+    }
+};
+
 export const getActiveClientDiscounts = async (req: Request, res: Response): Promise<any> => {
     try {
         const counterpartyId = req.params.counterpartyId as string;

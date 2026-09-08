@@ -9,7 +9,8 @@ import {
     applyClientPriceDocument,
     unpostClientPriceDocument,
     deleteClientPriceDocument,
-    getActiveClientDiscounts
+    getActiveClientDiscounts,
+    copyClientPriceDocument
 } from '../controllers/clientPriceDocumentController.js';
 
 const router = Router();
@@ -24,6 +25,7 @@ router.post('/', createClientPriceDocument);
 router.put('/:id', updateClientPriceDocument);
 router.post('/:id/apply', applyClientPriceDocument);
 router.post('/:id/unpost', unpostClientPriceDocument);
+router.post('/:id/copy', copyClientPriceDocument);
 router.delete('/:id', deleteClientPriceDocument);
 
 export default router;

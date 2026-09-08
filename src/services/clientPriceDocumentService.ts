@@ -183,8 +183,12 @@ export class ClientPriceDocumentService {
                 WHERE "priceTypeId" = $${paramIdx++}
                 ORDER BY "productId", "effectiveDate" DESC, "createdAt" DESC
             ) pj ON pj."productId" = p.id
-            LEFT JOIN "CounterpartyDiscountMatrix" cdm 
-                ON cdm."productId" = p.id AND cdm."counterpartyId" = $1
+            LEFT JOIN (
+                SELECT DISTINCT ON ("productId") "productId", "discountPercent"
+                FROM "CounterpartyDiscountMatrix"
+                WHERE "counterpartyId" = $1
+                ORDER BY "productId", "updatedAt" DESC
+            ) cdm ON cdm."productId" = p.id
             WHERE COALESCE(p."deleted", false) = false`;
             queryParams.push(validPriceTypeId);
         } else {
@@ -195,8 +199,12 @@ export class ClientPriceDocumentService {
                 FROM "ProductBatch"
                 ORDER BY "productId", "createdAt" DESC
             ) pb ON pb."productId" = p.id
-            LEFT JOIN "CounterpartyDiscountMatrix" cdm 
-                ON cdm."productId" = p.id AND cdm."counterpartyId" = $1
+            LEFT JOIN (
+                SELECT DISTINCT ON ("productId") "productId", "discountPercent"
+                FROM "CounterpartyDiscountMatrix"
+                WHERE "counterpartyId" = $1
+                ORDER BY "productId", "updatedAt" DESC
+            ) cdm ON cdm."productId" = p.id
             WHERE COALESCE(p."deleted", false) = false`;
         }
 
@@ -276,8 +284,16 @@ export class ClientPriceDocumentService {
             const doc = docRes.rows[0];
 
             if (dto.items && dto.items.length > 0) {
-                let sortOrder = 0;
+                // Deduplicate items by productId
+                const uniqueMap = new Map<string, any>();
                 for (const item of dto.items) {
+                    if (item && item.productId) {
+                        uniqueMap.set(item.productId, item);
+                    }
+                }
+
+                let sortOrder = 0;
+                for (const item of uniqueMap.values()) {
                     const discountPercent = Math.min(100, Math.max(0, Number(item.discountPercent) || 0));
                     const basePrice = Number(item.basePrice) || 0;
                     const costPrice = Number(item.costPrice) || 0;
@@ -326,8 +342,16 @@ export class ClientPriceDocumentService {
             await client.query('DELETE FROM "ClientPriceDocumentItem" WHERE "documentId" = $1', [id]);
 
             if (dto.items && dto.items.length > 0) {
-                let sortOrder = 0;
+                // Deduplicate items by productId
+                const uniqueMap = new Map<string, any>();
                 for (const item of dto.items) {
+                    if (item && item.productId) {
+                        uniqueMap.set(item.productId, item);
+                    }
+                }
+
+                let sortOrder = 0;
+                for (const item of uniqueMap.values()) {
                     const discountPercent = Math.min(100, Math.max(0, Number(item.discountPercent) || 0));
                     const basePrice = Number(item.basePrice) || 0;
                     const costPrice = Number(item.costPrice) || 0;
@@ -345,6 +369,61 @@ export class ClientPriceDocumentService {
 
             await client.query('COMMIT');
             return await this.getById(id);
+        } catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * Copy existing client price document as draft
+     */
+    static async copy(id: string, userId?: number) {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const origRes = await client.query('SELECT * FROM "ClientPriceDocument" WHERE id = $1', [id]);
+            if (origRes.rows.length === 0) throw new Error('Документ не знайдено');
+            const orig = origRes.rows[0];
+
+            const countRes = await client.query('SELECT COUNT(*) FROM "ClientPriceDocument"');
+            const nextNum = Number(countRes.rows[0].count) + 1;
+            const docNumber = `ЦК-${String(nextNum).padStart(6, '0')}`;
+
+            const newDocRes = await client.query(`
+                INSERT INTO "ClientPriceDocument" (
+                    "number", "date", "counterpartyId", "priceTypeId", "status", "comment", "createdBy", "createdAt", "updatedAt"
+                )
+                VALUES ($1, NOW(), $2, $3, 'DRAFT', $4, $5, NOW(), NOW())
+                RETURNING *
+            `, [docNumber, orig.counterpartyId, orig.priceTypeId, `Копія (${orig.number}) ${orig.comment || ''}`.trim(), userId || null]);
+
+            const newDoc = newDocRes.rows[0];
+
+            const itemsRes = await client.query('SELECT * FROM "ClientPriceDocumentItem" WHERE "documentId" = $1 ORDER BY "sortOrder" ASC', [id]);
+
+            const uniqueMap = new Map<string, any>();
+            for (const item of itemsRes.rows) {
+                if (item && item.productId) {
+                    uniqueMap.set(item.productId, item);
+                }
+            }
+
+            let sortOrder = 0;
+            for (const item of uniqueMap.values()) {
+                await client.query(`
+                    INSERT INTO "ClientPriceDocumentItem" (
+                        "documentId", "productId", "costPrice", "basePrice", "discountPercent", "finalPrice", "sortOrder"
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                `, [newDoc.id, item.productId, item.costPrice, item.basePrice, item.discountPercent, item.finalPrice, sortOrder++]);
+            }
+
+            await client.query('COMMIT');
+            return newDoc;
         } catch (e) {
             await client.query('ROLLBACK');
             throw e;
