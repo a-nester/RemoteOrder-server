@@ -5,6 +5,7 @@ export interface CreateClientPriceDocDto {
     counterpartyId: string;
     comment?: string;
     roundingMethod?: 'UP' | 'DOWN';
+    roundingValue?: number;
     items: {
         productId: string;
         costPrice: number;
@@ -13,13 +14,29 @@ export interface CreateClientPriceDocDto {
     }[];
 }
 
-const calculateClientFinalPrice = (basePrice: number, discountPercent: number, roundingMethod: string = 'UP'): number => {
+const calculateClientFinalPrice = (
+    basePrice: number, 
+    discountPercent: number, 
+    roundingMethod: string = 'UP',
+    roundingValue?: number
+): number => {
     const discountFactor = (100 - discountPercent) / 100;
     const raw = basePrice * discountFactor;
-    if (roundingMethod === 'DOWN') {
-        return Math.floor(raw * 100) / 100;
+    let result = raw;
+    if (roundingValue && roundingValue > 0) {
+        if (roundingMethod === 'DOWN') {
+            result = Math.floor(raw / roundingValue) * roundingValue;
+        } else {
+            result = Math.ceil(raw / roundingValue) * roundingValue;
+        }
+    } else {
+        if (roundingMethod === 'DOWN') {
+            result = Math.floor(raw * 100) / 100;
+        } else {
+            result = Math.ceil(raw * 100) / 100;
+        }
     }
-    return Math.ceil(raw * 100) / 100;
+    return Math.round(result * 100) / 100;
 };
 
 export class ClientPriceDocumentService {
@@ -102,8 +119,11 @@ export class ClientPriceDocumentService {
             ORDER BY COALESCE(p.category, 'Без категорії') ASC, p.name ASC
         `, [id]);
 
+        const doc = docRes.rows[0];
+
         return {
-            ...docRes.rows[0],
+            ...doc,
+            roundingValue: doc.roundingValue !== null && doc.roundingValue !== undefined ? Number(doc.roundingValue) : null,
             items: itemsRes.rows.map(item => ({
                 ...item,
                 category: item.category || 'Без категорії',
@@ -288,14 +308,15 @@ export class ClientPriceDocumentService {
             const docNumber = `ЦК-${String(nextNum).padStart(6, '0')}`;
 
             const roundingMethod = dto.roundingMethod || 'UP';
+            const roundingValue = dto.roundingValue !== undefined && dto.roundingValue !== null ? Number(dto.roundingValue) : null;
 
             const docRes = await client.query(`
                 INSERT INTO "ClientPriceDocument" (
-                    "number", "date", "counterpartyId", "priceTypeId", "status", "comment", "roundingMethod", "createdBy", "createdAt", "updatedAt"
+                    "number", "date", "counterpartyId", "priceTypeId", "status", "comment", "roundingMethod", "roundingValue", "createdBy", "createdAt", "updatedAt"
                 )
-                VALUES ($1, $2, $3, $4, 'DRAFT', $5, $6, $7, NOW(), NOW())
+                VALUES ($1, $2, $3, $4, 'DRAFT', $5, $6, $7, $8, NOW(), NOW())
                 RETURNING *
-            `, [docNumber, dto.date || new Date(), dto.counterpartyId, priceTypeId, dto.comment || null, roundingMethod, userId || null]);
+            `, [docNumber, dto.date || new Date(), dto.counterpartyId, priceTypeId, dto.comment || null, roundingMethod, roundingValue, userId || null]);
 
             const doc = docRes.rows[0];
 
@@ -313,7 +334,7 @@ export class ClientPriceDocumentService {
                     const discountPercent = Math.min(100, Math.max(0, Number(item.discountPercent) || 0));
                     const basePrice = Number(item.basePrice) || 0;
                     const costPrice = Number(item.costPrice) || 0;
-                    const finalPrice = calculateClientFinalPrice(basePrice, discountPercent, roundingMethod);
+                    const finalPrice = calculateClientFinalPrice(basePrice, discountPercent, roundingMethod, roundingValue || undefined);
 
                     await client.query(`
                         INSERT INTO "ClientPriceDocumentItem" (
@@ -342,19 +363,20 @@ export class ClientPriceDocumentService {
         try {
             await client.query('BEGIN');
 
-            const checkRes = await client.query('SELECT status, "roundingMethod" FROM "ClientPriceDocument" WHERE id = $1 FOR UPDATE', [id]);
+            const checkRes = await client.query('SELECT status, "roundingMethod", "roundingValue" FROM "ClientPriceDocument" WHERE id = $1 FOR UPDATE', [id]);
             if (checkRes.rows.length === 0) throw new Error('Документ не знайдено');
             if (checkRes.rows[0].status === 'APPLIED') {
                 throw new Error('Неможливо редагувати проведений документ. Спочатку розпроведіть його.');
             }
 
             const roundingMethod = dto.roundingMethod || checkRes.rows[0].roundingMethod || 'UP';
+            const roundingValue = dto.roundingValue !== undefined ? (dto.roundingValue !== null ? Number(dto.roundingValue) : null) : (checkRes.rows[0].roundingValue ? Number(checkRes.rows[0].roundingValue) : null);
 
             await client.query(`
                 UPDATE "ClientPriceDocument"
-                SET "date" = COALESCE($1, "date"), "comment" = $2, "roundingMethod" = $3, "updatedAt" = NOW()
-                WHERE id = $4
-            `, [dto.date, dto.comment || null, roundingMethod, id]);
+                SET "date" = COALESCE($1, "date"), "comment" = $2, "roundingMethod" = $3, "roundingValue" = $4, "updatedAt" = NOW()
+                WHERE id = $5
+            `, [dto.date, dto.comment || null, roundingMethod, roundingValue, id]);
 
             await client.query('DELETE FROM "ClientPriceDocumentItem" WHERE "documentId" = $1', [id]);
 
@@ -372,7 +394,7 @@ export class ClientPriceDocumentService {
                     const discountPercent = Math.min(100, Math.max(0, Number(item.discountPercent) || 0));
                     const basePrice = Number(item.basePrice) || 0;
                     const costPrice = Number(item.costPrice) || 0;
-                    const finalPrice = calculateClientFinalPrice(basePrice, discountPercent, roundingMethod);
+                    const finalPrice = calculateClientFinalPrice(basePrice, discountPercent, roundingMethod, roundingValue || undefined);
 
                     await client.query(`
                         INSERT INTO "ClientPriceDocumentItem" (
@@ -409,14 +431,15 @@ export class ClientPriceDocumentService {
             const nextNum = Number(countRes.rows[0].count) + 1;
             const docNumber = `ЦК-${String(nextNum).padStart(6, '0')}`;
             const roundingMethod = orig.roundingMethod || 'UP';
+            const roundingValue = orig.roundingValue !== null && orig.roundingValue !== undefined ? Number(orig.roundingValue) : null;
 
             const newDocRes = await client.query(`
                 INSERT INTO "ClientPriceDocument" (
-                    "number", "date", "counterpartyId", "priceTypeId", "status", "comment", "roundingMethod", "createdBy", "createdAt", "updatedAt"
+                    "number", "date", "counterpartyId", "priceTypeId", "status", "comment", "roundingMethod", "roundingValue", "createdBy", "createdAt", "updatedAt"
                 )
-                VALUES ($1, NOW(), $2, $3, 'DRAFT', $4, $5, $6, NOW(), NOW())
+                VALUES ($1, NOW(), $2, $3, 'DRAFT', $4, $5, $6, $7, NOW(), NOW())
                 RETURNING *
-            `, [docNumber, orig.counterpartyId, orig.priceTypeId, `Копія (${orig.number}) ${orig.comment || ''}`.trim(), roundingMethod, userId || null]);
+            `, [docNumber, orig.counterpartyId, orig.priceTypeId, `Копія (${orig.number}) ${orig.comment || ''}`.trim(), roundingMethod, roundingValue, userId || null]);
 
             const newDoc = newDocRes.rows[0];
 

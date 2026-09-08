@@ -180,6 +180,7 @@ import { runMigration as createInventoryCountTablesMigration } from './migration
 import { runMigration as createStockTransferTablesMigration } from './migrations/123_create_stock_transfer_tables.js';
 import { runMigration as createClientPriceTablesMigration } from './migrations/124_create_client_price_tables.js';
 import { runMigration as addClientPriceRoundingMethodMigration } from './migrations/125_add_client_price_rounding_method.js';
+import { up as addClientPriceRoundingValueMigration } from './migrations/126_add_client_price_rounding_value.js';
 
 const start = async () => {
   try {
@@ -226,6 +227,7 @@ const start = async () => {
     await createStockTransferTablesMigration();
     await createClientPriceTablesMigration();
     await addClientPriceRoundingMethodMigration();
+    await addClientPriceRoundingValueMigration();
 
 
     app.listen(Number(PORT), '0.0.0.0', () => {
