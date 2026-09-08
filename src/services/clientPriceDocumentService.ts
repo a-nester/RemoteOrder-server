@@ -508,7 +508,7 @@ export class ClientPriceDocumentService {
             await client.query(`
                 UPDATE "ClientPriceDocument"
                 SET "status" = 'DRAFT', "postedBy" = NULL, "postedAt" = NULL, "updatedAt" = NOW()
-                WHERE id = $2
+                WHERE id = $1
             `, [id]);
 
             await client.query('COMMIT');
