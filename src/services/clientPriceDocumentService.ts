@@ -4,6 +4,7 @@ export interface CreateClientPriceDocDto {
     date?: string | Date;
     counterpartyId: string;
     comment?: string;
+    roundingMethod?: 'UP' | 'DOWN';
     items: {
         productId: string;
         costPrice: number;
@@ -11,6 +12,15 @@ export interface CreateClientPriceDocDto {
         discountPercent: number;
     }[];
 }
+
+const calculateClientFinalPrice = (basePrice: number, discountPercent: number, roundingMethod: string = 'UP'): number => {
+    const discountFactor = (100 - discountPercent) / 100;
+    const raw = basePrice * discountFactor;
+    if (roundingMethod === 'DOWN') {
+        return Math.floor(raw * 100) / 100;
+    }
+    return Math.ceil(raw * 100) / 100;
+};
 
 export class ClientPriceDocumentService {
     /**
@@ -273,13 +283,15 @@ export class ClientPriceDocumentService {
             const nextNum = Number(countRes.rows[0].count) + 1;
             const docNumber = `ЦК-${String(nextNum).padStart(6, '0')}`;
 
+            const roundingMethod = dto.roundingMethod || 'UP';
+
             const docRes = await client.query(`
                 INSERT INTO "ClientPriceDocument" (
-                    "number", "date", "counterpartyId", "priceTypeId", "status", "comment", "createdBy", "createdAt", "updatedAt"
+                    "number", "date", "counterpartyId", "priceTypeId", "status", "comment", "roundingMethod", "createdBy", "createdAt", "updatedAt"
                 )
-                VALUES ($1, $2, $3, $4, 'DRAFT', $5, $6, NOW(), NOW())
+                VALUES ($1, $2, $3, $4, 'DRAFT', $5, $6, $7, NOW(), NOW())
                 RETURNING *
-            `, [docNumber, dto.date || new Date(), dto.counterpartyId, priceTypeId, dto.comment || null, userId || null]);
+            `, [docNumber, dto.date || new Date(), dto.counterpartyId, priceTypeId, dto.comment || null, roundingMethod, userId || null]);
 
             const doc = docRes.rows[0];
 
@@ -297,8 +309,7 @@ export class ClientPriceDocumentService {
                     const discountPercent = Math.min(100, Math.max(0, Number(item.discountPercent) || 0));
                     const basePrice = Number(item.basePrice) || 0;
                     const costPrice = Number(item.costPrice) || 0;
-                    const discountFactor = (100 - discountPercent) / 100;
-                    const finalPrice = Math.round(basePrice * discountFactor * 100) / 100;
+                    const finalPrice = calculateClientFinalPrice(basePrice, discountPercent, roundingMethod);
 
                     await client.query(`
                         INSERT INTO "ClientPriceDocumentItem" (
@@ -327,17 +338,19 @@ export class ClientPriceDocumentService {
         try {
             await client.query('BEGIN');
 
-            const checkRes = await client.query('SELECT status FROM "ClientPriceDocument" WHERE id = $1 FOR UPDATE', [id]);
+            const checkRes = await client.query('SELECT status, "roundingMethod" FROM "ClientPriceDocument" WHERE id = $1 FOR UPDATE', [id]);
             if (checkRes.rows.length === 0) throw new Error('Документ не знайдено');
             if (checkRes.rows[0].status === 'APPLIED') {
                 throw new Error('Неможливо редагувати проведений документ. Спочатку розпроведіть його.');
             }
 
+            const roundingMethod = dto.roundingMethod || checkRes.rows[0].roundingMethod || 'UP';
+
             await client.query(`
                 UPDATE "ClientPriceDocument"
-                SET "date" = COALESCE($1, "date"), "comment" = $2, "updatedAt" = NOW()
-                WHERE id = $3
-            `, [dto.date, dto.comment || null, id]);
+                SET "date" = COALESCE($1, "date"), "comment" = $2, "roundingMethod" = $3, "updatedAt" = NOW()
+                WHERE id = $4
+            `, [dto.date, dto.comment || null, roundingMethod, id]);
 
             await client.query('DELETE FROM "ClientPriceDocumentItem" WHERE "documentId" = $1', [id]);
 
@@ -355,8 +368,7 @@ export class ClientPriceDocumentService {
                     const discountPercent = Math.min(100, Math.max(0, Number(item.discountPercent) || 0));
                     const basePrice = Number(item.basePrice) || 0;
                     const costPrice = Number(item.costPrice) || 0;
-                    const discountFactor = (100 - discountPercent) / 100;
-                    const finalPrice = Math.round(basePrice * discountFactor * 100) / 100;
+                    const finalPrice = calculateClientFinalPrice(basePrice, discountPercent, roundingMethod);
 
                     await client.query(`
                         INSERT INTO "ClientPriceDocumentItem" (
@@ -392,14 +404,15 @@ export class ClientPriceDocumentService {
             const countRes = await client.query('SELECT COUNT(*) FROM "ClientPriceDocument"');
             const nextNum = Number(countRes.rows[0].count) + 1;
             const docNumber = `ЦК-${String(nextNum).padStart(6, '0')}`;
+            const roundingMethod = orig.roundingMethod || 'UP';
 
             const newDocRes = await client.query(`
                 INSERT INTO "ClientPriceDocument" (
-                    "number", "date", "counterpartyId", "priceTypeId", "status", "comment", "createdBy", "createdAt", "updatedAt"
+                    "number", "date", "counterpartyId", "priceTypeId", "status", "comment", "roundingMethod", "createdBy", "createdAt", "updatedAt"
                 )
-                VALUES ($1, NOW(), $2, $3, 'DRAFT', $4, $5, NOW(), NOW())
+                VALUES ($1, NOW(), $2, $3, 'DRAFT', $4, $5, $6, NOW(), NOW())
                 RETURNING *
-            `, [docNumber, orig.counterpartyId, orig.priceTypeId, `Копія (${orig.number}) ${orig.comment || ''}`.trim(), userId || null]);
+            `, [docNumber, orig.counterpartyId, orig.priceTypeId, `Копія (${orig.number}) ${orig.comment || ''}`.trim(), roundingMethod, userId || null]);
 
             const newDoc = newDocRes.rows[0];
 
