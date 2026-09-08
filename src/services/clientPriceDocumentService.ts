@@ -94,17 +94,19 @@ export class ClientPriceDocumentService {
                 cpdi.*,
                 COALESCE(p.barcode, SUBSTRING(p.id::text, 1, 8)) as "productCode",
                 p.name as "productName",
-                p.unit as "productUnit"
+                p.unit as "productUnit",
+                COALESCE(p.category, 'Без категорії') as "category"
             FROM "ClientPriceDocumentItem" cpdi
             JOIN "Product" p ON cpdi."productId" = p.id
             WHERE cpdi."documentId" = $1
-            ORDER BY cpdi."sortOrder" ASC, p.name ASC
+            ORDER BY COALESCE(p.category, 'Без категорії') ASC, p.name ASC
         `, [id]);
 
         return {
             ...docRes.rows[0],
             items: itemsRes.rows.map(item => ({
                 ...item,
+                category: item.category || 'Без категорії',
                 costPrice: Number(item.costPrice) || 0,
                 basePrice: Number(item.basePrice) || 0,
                 discountPercent: Number(item.discountPercent) || 0,
@@ -171,6 +173,7 @@ export class ClientPriceDocumentService {
                 COALESCE(p.barcode, SUBSTRING(p.id::text, 1, 8)) as "productCode",
                 p.name as "productName",
                 p.unit as "productUnit",
+                COALESCE(p.category, 'Без категорії') as "category",
                 p.prices as "productPrices",
                 COALESCE(pb."enterPrice", 0) as "costPrice",
                 COALESCE(cdm."discountPercent", 0) as "currentDiscountPercent"
@@ -224,7 +227,7 @@ export class ClientPriceDocumentService {
             queryParams.push(lowerCategories);
         }
 
-        query += ` ORDER BY p.name ASC`;
+        query += ` ORDER BY COALESCE(p.category, 'Без категорії') ASC, p.name ASC`;
 
         const itemsRes = await pool.query(query, queryParams);
 
@@ -258,6 +261,7 @@ export class ClientPriceDocumentService {
                     productCode: row.productCode || '',
                     productName: row.productName || '',
                     productUnit: row.productUnit || 'шт',
+                    category: row.category || 'Без категорії',
                     costPrice,
                     basePrice,
                     discountPercent,
