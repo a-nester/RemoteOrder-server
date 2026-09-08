@@ -580,14 +580,25 @@ export class ClientPriceDocumentService {
      */
     static async getActiveDiscounts(counterpartyId: string) {
         const res = await pool.query(`
-            SELECT cdm.*, COALESCE(p.barcode, SUBSTRING(p.id::text, 1, 8)) as "productCode", p.name as "productName"
+            SELECT 
+                cdm.*, 
+                COALESCE(p.barcode, SUBSTRING(p.id::text, 1, 8)) as "productCode", 
+                p.name as "productName",
+                cpd."roundingMethod",
+                cpd."roundingValue",
+                cpdi."finalPrice"
             FROM "CounterpartyDiscountMatrix" cdm
             JOIN "Product" p ON cdm."productId" = p.id
+            LEFT JOIN "ClientPriceDocument" cpd ON cdm."documentId" = cpd.id
+            LEFT JOIN "ClientPriceDocumentItem" cpdi ON (cpdi."documentId" = cpd.id AND cpdi."productId" = cdm."productId")
             WHERE cdm."counterpartyId" = $1
         `, [counterpartyId]);
         return res.rows.map(r => ({
             ...r,
-            discountPercent: Number(r.discountPercent)
+            discountPercent: Number(r.discountPercent),
+            roundingMethod: r.roundingMethod || 'UP',
+            roundingValue: r.roundingValue !== null && r.roundingValue !== undefined ? Number(r.roundingValue) : undefined,
+            finalPrice: r.finalPrice !== null && r.finalPrice !== undefined ? Number(r.finalPrice) : undefined
         }));
     }
 }
