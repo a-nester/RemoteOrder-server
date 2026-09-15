@@ -15,6 +15,7 @@ export class StockTransferService {
                 p.name as "productName",
                 COALESCE(p.barcode, SUBSTRING(p.id::text, 1, 8)) as "productCode",
                 p.unit,
+                COALESCE(p.weight, 0) as "weight",
                 COALESCE(pb."enterPrice", 0) as "price",
                 COALESCE(SUM(pb."quantityLeft"), 0) as "availableQty"
             FROM "Product" p
@@ -25,7 +26,7 @@ export class StockTransferService {
             WHERE COALESCE(gr."warehouseId", br."warehouseId", st."toWarehouseId") = $1
               AND COALESCE(p."deleted", false) = FALSE
 
-            GROUP BY p.id, p.name, p.barcode, p.unit, pb."enterPrice"
+            GROUP BY p.id, p.name, p.barcode, p.unit, p.weight, pb."enterPrice"
             ORDER BY p.name ASC
 
         `;
@@ -33,7 +34,8 @@ export class StockTransferService {
         return res.rows.map(r => ({
             ...r,
             availableQty: round3(Number(r.availableQty)),
-            price: Number(r.price)
+            price: Number(r.price),
+            weight: Number(r.weight || 0)
         }));
     }
 

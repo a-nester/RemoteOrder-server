@@ -91,7 +91,7 @@ router.get('/:id', userAuth, async (req: AuthRequest, res) => {
         }
 
         const itemsRes = await pool.query(`
-            SELECT sti.*, p.name as "productName", COALESCE(p.barcode, SUBSTRING(p.id::text, 1, 8)) as "productCode", p.unit
+            SELECT sti.*, p.name as "productName", COALESCE(p.barcode, SUBSTRING(p.id::text, 1, 8)) as "productCode", p.unit, COALESCE(p.weight, 0) as "weight"
             FROM "StockTransferItem" sti
             JOIN "Product" p ON sti."productId" = p.id
             WHERE sti."stockTransferId" = $1
