@@ -15,8 +15,8 @@ router.get('/', userAuth, async (req: AuthRequest, res) => {
             SELECT st.*, 
                    fw.name as "fromWarehouseName", 
                    tw.name as "toWarehouseName", 
-                   u.name as "creatorName", 
-                   pu.name as "posterName"
+                   u.email as "creatorName", 
+                   pu.email as "posterName"
             FROM "StockTransfer" st
             LEFT JOIN "Warehouse" fw ON st."fromWarehouseId" = fw.id
             LEFT JOIN "Warehouse" tw ON st."toWarehouseId" = tw.id
@@ -78,7 +78,7 @@ router.get('/:id', userAuth, async (req: AuthRequest, res) => {
             SELECT st.*, 
                    fw.name as "fromWarehouseName", 
                    tw.name as "toWarehouseName", 
-                   u.name as "creatorName"
+                   u.email as "creatorName"
             FROM "StockTransfer" st
             LEFT JOIN "Warehouse" fw ON st."fromWarehouseId" = fw.id
             LEFT JOIN "Warehouse" tw ON st."toWarehouseId" = tw.id
@@ -122,8 +122,8 @@ router.post('/', userAuth, async (req: AuthRequest, res) => {
             throw new Error('Склад-відправник та Склад-отримувач мають бути різними');
         }
 
-        const number = await generateDocNumber('PER', 'StockTransfer');
         const docDate = date ? new Date(date) : new Date();
+        const number = await generateDocNumber('StockTransfer', docDate, 'number');
 
         let totalAmount = 0;
         if (items && Array.isArray(items)) {
@@ -142,7 +142,7 @@ router.post('/', userAuth, async (req: AuthRequest, res) => {
             RETURNING *
         `, [
             number, docDate, fromWarehouseId, toWarehouseId, comment || null,
-            totalAmount, req.user?.id || null
+            totalAmount, req.user?.id ? Number(req.user.id) : null
         ]);
 
         const docId = docRes.rows[0].id;

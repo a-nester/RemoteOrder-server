@@ -12,7 +12,7 @@ router.get('/', userAuth, async (req: AuthRequest, res) => {
     try {
         const { warehouseId, status, dateFrom, dateTo } = req.query;
         let query = `
-            SELECT ic.*, w.name as "warehouseName", u.name as "creatorName", pu.name as "posterName"
+            SELECT ic.*, w.name as "warehouseName", u.email as "creatorName", pu.email as "posterName"
             FROM "InventoryCount" ic
             LEFT JOIN "Warehouse" w ON ic."warehouseId" = w.id
             LEFT JOIN "User" u ON ic."createdBy" = u.id
@@ -66,7 +66,7 @@ router.get('/:id', userAuth, async (req: AuthRequest, res) => {
     try {
         const { id } = req.params;
         const docRes = await pool.query(`
-            SELECT ic.*, w.name as "warehouseName", u.name as "creatorName"
+            SELECT ic.*, w.name as "warehouseName", u.email as "creatorName"
             FROM "InventoryCount" ic
             LEFT JOIN "Warehouse" w ON ic."warehouseId" = w.id
             LEFT JOIN "User" u ON ic."createdBy" = u.id
@@ -106,8 +106,8 @@ router.post('/', userAuth, async (req: AuthRequest, res) => {
             throw new Error('Склад є обов’язковим полем');
         }
 
-        const number = await generateDocNumber('INV', 'InventoryCount');
         const docDate = date ? new Date(date) : new Date();
+        const number = await generateDocNumber('InventoryCount', docDate, 'number');
 
         let totalAccountingAmount = 0;
         let totalActualAmount = 0;
