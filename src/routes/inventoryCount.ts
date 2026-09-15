@@ -78,7 +78,7 @@ router.get('/:id', userAuth, async (req: AuthRequest, res) => {
         }
 
         const itemsRes = await pool.query(`
-            SELECT ici.*, p.name as "productName", p.code as "productCode", p.unit
+            SELECT ici.*, p.name as "productName", COALESCE(p.barcode, SUBSTRING(p.id::text, 1, 8)) as "productCode", p.unit
             FROM "InventoryCountItem" ici
             JOIN "Product" p ON ici."productId" = p.id
             WHERE ici."inventoryCountId" = $1
