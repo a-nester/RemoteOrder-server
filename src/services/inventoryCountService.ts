@@ -117,4 +117,82 @@ export class InventoryCountService {
             client.release();
         }
     }
+
+    /**
+     * Unpost inventory count document
+     */
+    static async unpost(inventoryCountId: string, userId: string, userDetails?: any) {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const docRes = await client.query(
+                'SELECT * FROM "InventoryCount" WHERE id = $1 FOR UPDATE', 
+                [inventoryCountId]
+            );
+            if (docRes.rows.length === 0) throw new Error('Документ інвентаризації не знайдено');
+            
+            const doc = docRes.rows[0];
+            if (doc.status !== 'POSTED') throw new Error('Тільки проведені документи можна розпровести');
+
+            const itemsRes = await client.query(
+                'SELECT * FROM "InventoryCountItem" WHERE "inventoryCountId" = $1 ORDER BY "sortOrder" ASC', 
+                [inventoryCountId]
+            );
+            const items = itemsRes.rows;
+
+            // 1. Delete surplus ProductBatch records created by this InventoryCount
+            await client.query(
+                'DELETE FROM "ProductBatch" WHERE "inventoryCountId" = $1',
+                [inventoryCountId]
+            );
+
+            // 2. Return shortage stock back
+            for (const item of items) {
+                const diffQty = round3(Number(item.actualQty) - Number(item.accountingQty));
+                const price = Number(item.price);
+
+                if (diffQty < 0) {
+                    const shortageQty = Math.abs(diffQty);
+                    await InventoryService.addStock(
+                        client, 
+                        item.productId, 
+                        shortageQty, 
+                        price, 
+                        undefined, 
+                        new Date(),
+                        undefined,
+                        undefined,
+                        undefined
+                    );
+                }
+            }
+
+            const numericUserId = typeof userId === 'number' ? userId : (parseInt(String(userId), 10) || null);
+            await client.query(`
+                UPDATE "InventoryCount"
+                SET "status" = 'DRAFT', "postedBy" = NULL, "postedAt" = NULL, "updatedAt" = NOW()
+                WHERE id = $1
+            `, [inventoryCountId]);
+
+            // Log Audit event
+            await AuditService.log(client, {
+                userId,
+                userName: userDetails?.name || userDetails?.username,
+                userRole: userDetails?.role,
+                action: 'UNPOST',
+                entity: 'InventoryCount',
+                entityId: inventoryCountId,
+                oldData: { status: 'POSTED', docNumber: doc.number }
+            });
+
+            await client.query('COMMIT');
+            return { success: true, message: 'Інвентаризацію успішно розпроведено' };
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
 }

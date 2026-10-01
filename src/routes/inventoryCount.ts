@@ -279,6 +279,19 @@ router.post('/:id/post', userAuth, async (req: AuthRequest, res) => {
     }
 });
 
+// UNPOST Inventory Count document
+router.post('/:id/unpost', userAuth, async (req: AuthRequest, res) => {
+    try {
+        const id = req.params.id as string;
+        const userId = req.user?.id || '';
+        const result = await InventoryCountService.unpost(id, userId, req.user);
+        res.json(result);
+    } catch (error: any) {
+        console.error('UNPOST INVENTORY COUNT ERROR:', error);
+        res.status(400).json({ message: error.message || 'Failed to unpost inventory count' });
+    }
+});
+
 // DELETE Inventory Count document
 router.delete('/:id', userAuth, async (req: AuthRequest, res) => {
     try {

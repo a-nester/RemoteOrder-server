@@ -5,7 +5,7 @@ export interface AuditLogParams {
   userName?: string;
   userRole?: string;
   action: 'UNPOST' | 'DELETE' | 'UPDATE' | 'POST' | 'CANCEL' | 'PRICE_CHANGE';
-  entity: 'Realization' | 'Order' | 'BuyerReturn' | 'GoodsReceipt' | 'CashTransaction';
+  entity: 'Realization' | 'Order' | 'BuyerReturn' | 'GoodsReceipt' | 'CashTransaction' | 'InventoryCount' | 'StockTransfer' | 'SupplierReturn' | 'PriceDocument' | 'ClientPriceDocument';
   entityId: string;
   oldData?: any;
   newData?: any;
