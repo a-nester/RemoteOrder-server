@@ -21,7 +21,9 @@ export class InventoryCountService {
             LEFT JOIN "ProductBatch" pb ON pb."productId" = p.id AND pb."quantityLeft" > 0
             LEFT JOIN "GoodsReceipt" gr ON pb."goodsReceiptId" = gr.id
             LEFT JOIN "BuyerReturn" br ON pb."buyerReturnId" = br.id
-            WHERE (COALESCE(gr."warehouseId", br."warehouseId") = $1 OR pb.id IS NULL)
+            LEFT JOIN "StockTransfer" st ON pb."stockTransferId" = st.id
+            LEFT JOIN "InventoryCount" ic ON pb."inventoryCountId" = ic.id
+            WHERE (COALESCE(gr."warehouseId", br."warehouseId", st."toWarehouseId", ic."warehouseId") = $1 OR pb.id IS NULL)
               AND COALESCE(p."deleted", false) = FALSE
 
             GROUP BY p.id, p.name, p.barcode, p.unit
@@ -64,14 +66,17 @@ export class InventoryCountService {
                 const price = Number(item.price);
 
                 if (diffQty > 0) {
-                    // Surplus: Add stock batch
+                    // Surplus: Add stock batch linked to this inventory count and warehouse
                     await InventoryService.addStock(
                         client, 
                         item.productId, 
                         diffQty, 
                         price, 
                         undefined, 
-                        new Date()
+                        new Date(),
+                        undefined,
+                        undefined,
+                        inventoryCountId
                     );
                 } else if (diffQty < 0) {
                     // Shortage: Deduct stock batch using FIFO

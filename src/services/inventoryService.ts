@@ -4,13 +4,23 @@ export class InventoryService {
     /**
      * Add new stock batch
      */
-    static async addStock(client: any, productId: string, quantity: number, enterPrice: number, goodsReceiptId?: string, targetDate?: Date, buyerReturnId?: string, stockTransferId?: string) {
+    static async addStock(
+        client: any, 
+        productId: string, 
+        quantity: number, 
+        enterPrice: number, 
+        goodsReceiptId?: string, 
+        targetDate?: Date, 
+        buyerReturnId?: string, 
+        stockTransferId?: string,
+        inventoryCountId?: string
+    ) {
         const roundedQty = round3(quantity);
         const result = await client.query(
-            `INSERT INTO "ProductBatch" ("productId", "quantityTotal", "quantityLeft", "enterPrice", "goodsReceiptId", "buyerReturnId", "stockTransferId", "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+            `INSERT INTO "ProductBatch" ("productId", "quantityTotal", "quantityLeft", "enterPrice", "goodsReceiptId", "buyerReturnId", "stockTransferId", "inventoryCountId", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
        RETURNING *`,
-            [productId, roundedQty, roundedQty, enterPrice, goodsReceiptId || null, buyerReturnId || null, stockTransferId || null, targetDate || new Date()]
+            [productId, roundedQty, roundedQty, enterPrice, goodsReceiptId || null, buyerReturnId || null, stockTransferId || null, inventoryCountId || null, targetDate || new Date()]
         );
         return result.rows[0];
     }
@@ -26,9 +36,10 @@ export class InventoryService {
              LEFT JOIN "GoodsReceipt" gr ON pb."goodsReceiptId" = gr.id
              LEFT JOIN "BuyerReturn" br ON pb."buyerReturnId" = br.id
              LEFT JOIN "StockTransfer" st ON pb."stockTransferId" = st.id
+             LEFT JOIN "InventoryCount" ic ON pb."inventoryCountId" = ic.id
              WHERE pb."productId" = $1 
                AND pb."quantityLeft" > 0 
-               AND COALESCE(gr."warehouseId", br."warehouseId", st."toWarehouseId") = $2
+               AND COALESCE(gr."warehouseId", br."warehouseId", st."toWarehouseId", ic."warehouseId") = $2
              ORDER BY pb."createdAt" ASC 
              FOR UPDATE OF pb`, // Lock only ProductBatch rows
             [productId, warehouseId]

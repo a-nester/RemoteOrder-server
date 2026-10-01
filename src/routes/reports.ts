@@ -26,7 +26,7 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
 
         let warehouseFilter = '';
         if (warehouseId) {
-            warehouseFilter = ` AND COALESCE(gr."warehouseId", br."warehouseId")::text = $2`;
+            warehouseFilter = ` AND COALESCE(gr."warehouseId", br."warehouseId", st."toWarehouseId", ic."warehouseId")::text = $2`;
             params.push(warehouseId);
         }
 
@@ -51,13 +51,15 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
                 SELECT 
                     pb.id as batch_id,
                     pb."productId",
-                    COALESCE(gr."warehouseId", br."warehouseId") as "warehouseId",
+                    COALESCE(gr."warehouseId", br."warehouseId", st."toWarehouseId", ic."warehouseId") as "warehouseId",
                     pb."enterPrice",
-                    CASE WHEN COALESCE(gr."date", br."date") < ($1::date + interval '1 day') THEN pb."quantityTotal" ELSE 0 END as incoming,
+                    CASE WHEN COALESCE(gr."date", br."date", st."date", ic."date") < ($1::date + interval '1 day') THEN pb."quantityTotal" ELSE 0 END as incoming,
                     COALESCE(rbo.outgoing_qty, 0) + COALESCE(srbo.outgoing_qty, 0) as outgoing
                 FROM "ProductBatch" pb
                 LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
                 LEFT JOIN "BuyerReturn" br ON br.id::text = pb."buyerReturnId"::text
+                LEFT JOIN "StockTransfer" st ON st.id::text = pb."stockTransferId"::text
+                LEFT JOIN "InventoryCount" ic ON ic.id::text = pb."inventoryCountId"::text
                 LEFT JOIN RealizationBatchOut rbo ON rbo."productBatchId" = pb.id::text
                 LEFT JOIN SupplierReturnBatchOut srbo ON srbo."productBatchId" = pb.id::text
                 WHERE 1=1 ${warehouseFilter}
@@ -117,15 +119,17 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
                                 'id', COALESCE(gr.id, br.id),
                                 'type', CASE WHEN gr.id IS NOT NULL THEN 'GOODS_RECEIPT' ELSE 'BUYER_RETURN' END,
                                 'docNumber', COALESCE(gr."docNumber", br."number"),
-                                'date', COALESCE(gr."date", br."date"),
+                                'date', COALESCE(gr."date", br."date", st."date", ic."date"),
                                 'quantity', pb."quantityTotal"
                             )
                         ELSE NULL END
-                    ) FILTER (WHERE COALESCE(gr."date", br."date") >= $1::date AND COALESCE(gr."date", br."date") < ($2::date + interval '1 day')) as incoming_docs
+                    ) FILTER (WHERE COALESCE(gr."date", br."date", st."date", ic."date") >= $1::date AND COALESCE(gr."date", br."date", st."date", ic."date") < ($2::date + interval '1 day')) as incoming_docs
                 FROM "ProductBatch" pb
                 LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
                 LEFT JOIN "BuyerReturn" br ON br.id::text = pb."buyerReturnId"::text
-                WHERE COALESCE(gr."warehouseId", br."warehouseId")::text = $3
+                LEFT JOIN "StockTransfer" st ON st.id::text = pb."stockTransferId"::text
+                LEFT JOIN "InventoryCount" ic ON ic.id::text = pb."inventoryCountId"::text
+                WHERE COALESCE(gr."warehouseId", br."warehouseId", st."toWarehouseId", ic."warehouseId")::text = $3
                 GROUP BY pb."productId"
             ),
             OutgoingEvents AS (
@@ -140,9 +144,11 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
                 JOIN "ProductBatch" pb ON pb.id::text = rib."productBatchId"::text
                 LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
                 LEFT JOIN "BuyerReturn" br ON br.id::text = pb."buyerReturnId"::text
+                LEFT JOIN "StockTransfer" st ON st.id::text = pb."stockTransferId"::text
+                LEFT JOIN "InventoryCount" ic ON ic.id::text = pb."inventoryCountId"::text
                 JOIN "RealizationItem" ri ON ri.id = rib."realizationItemId"
                 JOIN "Realization" r ON r.id = ri."realizationId"
-                WHERE COALESCE(gr."warehouseId", br."warehouseId")::text = $3
+                WHERE COALESCE(gr."warehouseId", br."warehouseId", st."toWarehouseId", ic."warehouseId")::text = $3
                 
                 UNION ALL
                 
@@ -157,9 +163,11 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
                 JOIN "ProductBatch" pb ON pb.id::text = srib."productBatchId"::text
                 LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
                 LEFT JOIN "BuyerReturn" br ON br.id::text = pb."buyerReturnId"::text
+                LEFT JOIN "StockTransfer" st ON st.id::text = pb."stockTransferId"::text
+                LEFT JOIN "InventoryCount" ic ON ic.id::text = pb."inventoryCountId"::text
                 JOIN "SupplierReturnItem" sri ON sri.id = srib."supplierReturnItemId"
                 JOIN "SupplierReturn" sr ON sr.id = sri."supplierReturnId"
-                WHERE COALESCE(gr."warehouseId", br."warehouseId")::text = $3
+                WHERE COALESCE(gr."warehouseId", br."warehouseId", st."toWarehouseId", ic."warehouseId")::text = $3
             ),
             BatchOutgoing AS (
                 SELECT 
