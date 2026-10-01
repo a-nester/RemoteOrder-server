@@ -15,8 +15,8 @@ export async function runMigration() {
                 "totalActualAmount" DECIMAL(12, 2) DEFAULT 0,
                 "totalSurplusAmount" DECIMAL(12, 2) DEFAULT 0,
                 "totalShortageAmount" DECIMAL(12, 2) DEFAULT 0,
-                "createdBy" UUID REFERENCES "User"("id"),
-                "postedBy" UUID REFERENCES "User"("id"),
+                "createdBy" INT REFERENCES "User"("id"),
+                "postedBy" INT REFERENCES "User"("id"),
                 "postedAt" TIMESTAMP WITH TIME ZONE,
                 "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()

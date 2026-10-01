@@ -85,12 +85,12 @@ export class InventoryCountService {
                 }
             }
 
-            // Update status to POSTED
+            const numericUserId = typeof userId === 'number' ? userId : (parseInt(String(userId), 10) || null);
             await client.query(`
                 UPDATE "InventoryCount"
                 SET "status" = 'POSTED', "postedBy" = $1, "postedAt" = NOW(), "updatedAt" = NOW()
                 WHERE id = $2
-            `, [userId, inventoryCountId]);
+            `, [numericUserId, inventoryCountId]);
 
             // Log Audit event
             await AuditService.log(client, {
