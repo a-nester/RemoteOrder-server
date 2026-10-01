@@ -31,20 +31,20 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
         }
 
         const query = `
-            WITH RealizationBatchOut AS (
+            WITH RealizationBatchOutAfter AS (
                 SELECT rib."productBatchId"::text, SUM(rib.quantity) as outgoing_qty
                 FROM "RealizationItemBatch" rib
                 JOIN "RealizationItem" ri ON ri.id = rib."realizationItemId"
                 JOIN "Realization" r ON r.id = ri."realizationId"
-                WHERE r."date" < ($1::date + interval '1 day') AND r.status = 'POSTED'
+                WHERE r."date" >= ($1::date + interval '1 day') AND r.status = 'POSTED'
                 GROUP BY rib."productBatchId"::text
             ),
-            SupplierReturnBatchOut AS (
+            SupplierReturnBatchOutAfter AS (
                 SELECT srib."productBatchId"::text, SUM(srib.quantity) as outgoing_qty
                 FROM "SupplierReturnItemBatch" srib
                 JOIN "SupplierReturnItem" sri ON sri.id = srib."supplierReturnItemId"
                 JOIN "SupplierReturn" sr ON sr.id = sri."supplierReturnId"
-                WHERE sr."date" < ($1::date + interval '1 day') AND sr.status = 'POSTED'
+                WHERE sr."date" >= ($1::date + interval '1 day') AND sr.status = 'POSTED'
                 GROUP BY srib."productBatchId"::text
             ),
             BatchBalances AS (
@@ -53,15 +53,17 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
                     pb."productId",
                     COALESCE(gr."warehouseId", br."warehouseId", st."toWarehouseId", ic."warehouseId") as "warehouseId",
                     pb."enterPrice",
-                    CASE WHEN COALESCE(gr."date", br."date", st."date", ic."date") < ($1::date + interval '1 day') THEN pb."quantityTotal" ELSE 0 END as incoming,
-                    COALESCE(rbo.outgoing_qty, 0) + COALESCE(srbo.outgoing_qty, 0) as outgoing
+                    CASE WHEN COALESCE(gr."date", br."date", st."date", ic."date") < ($1::date + interval '1 day') 
+                         THEN pb."quantityLeft" + COALESCE(rboa.outgoing_qty, 0) + COALESCE(srboa.outgoing_qty, 0)
+                         ELSE 0 
+                    END as balance
                 FROM "ProductBatch" pb
                 LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
                 LEFT JOIN "BuyerReturn" br ON br.id::text = pb."buyerReturnId"::text
                 LEFT JOIN "StockTransfer" st ON st.id::text = pb."stockTransferId"::text
                 LEFT JOIN "InventoryCount" ic ON ic.id::text = pb."inventoryCountId"::text
-                LEFT JOIN RealizationBatchOut rbo ON rbo."productBatchId" = pb.id::text
-                LEFT JOIN SupplierReturnBatchOut srbo ON srbo."productBatchId" = pb.id::text
+                LEFT JOIN RealizationBatchOutAfter rboa ON rboa."productBatchId" = pb.id::text
+                LEFT JOIN SupplierReturnBatchOutAfter srboa ON srboa."productBatchId" = pb.id::text
                 WHERE 1=1 ${warehouseFilter}
             )
             SELECT 
@@ -69,13 +71,13 @@ router.get('/stock-balances', async (req: Request, res: Response) => {
                 p.name as "productName",
                 p.category as "productCategory",
                 w.name as "warehouseName",
-                SUM(bb.incoming - bb.outgoing) as balance,
-                SUM((bb.incoming - bb.outgoing) * bb."enterPrice") as "totalValue"
+                SUM(bb.balance) as balance,
+                SUM(bb.balance * bb."enterPrice") as "totalValue"
             FROM BatchBalances bb
             LEFT JOIN "Product" p ON p.id::text = bb."productId"::text
             LEFT JOIN "Warehouse" w ON w.id::text = bb."warehouseId"::text
             GROUP BY bb."productId", p.name, p.category, bb."warehouseId", w.name
-            HAVING SUM(bb.incoming - bb.outgoing) != 0
+            HAVING SUM(bb.balance) != 0
         `;
 
         let orderClause = ` ORDER BY p.category ASC NULLS LAST, p.name ASC`;
