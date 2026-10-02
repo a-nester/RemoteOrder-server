@@ -147,7 +147,13 @@ export class InventoryCountService {
                 [inventoryCountId]
             );
 
-            // 2. Return shortage stock back
+            // 2. Return shortage stock back linked to warehouse GoodsReceipt
+            const grRes = await client.query(
+                'SELECT id FROM "GoodsReceipt" WHERE "warehouseId" = $1 ORDER BY "createdAt" DESC LIMIT 1',
+                [doc.warehouseId]
+            );
+            const latestGrId = grRes.rows[0]?.id || undefined;
+
             for (const item of items) {
                 const diffQty = round3(Number(item.actualQty) - Number(item.accountingQty));
                 const price = Number(item.price);
@@ -159,11 +165,8 @@ export class InventoryCountService {
                         item.productId, 
                         shortageQty, 
                         price, 
-                        undefined, 
-                        new Date(),
-                        undefined,
-                        undefined,
-                        inventoryCountId
+                        latestGrId, 
+                        new Date()
                     );
                 }
             }
