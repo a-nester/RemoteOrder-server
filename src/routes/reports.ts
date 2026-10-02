@@ -110,17 +110,59 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
         }
 
         const query = `
-            WITH BatchIncoming AS (
+            WITH RealizationOutAfterPeriod AS (
+                SELECT rib."productBatchId"::text, SUM(rib.quantity) as qty
+                FROM "RealizationItemBatch" rib
+                JOIN "RealizationItem" ri ON ri.id = rib."realizationItemId"
+                JOIN "Realization" r ON r.id = ri."realizationId"
+                WHERE r."date" >= ($2::date + interval '1 day') AND r.status = 'POSTED'
+                GROUP BY rib."productBatchId"::text
+            ),
+            SupplierReturnOutAfterPeriod AS (
+                SELECT srib."productBatchId"::text, SUM(srib.quantity) as qty
+                FROM "SupplierReturnItemBatch" srib
+                JOIN "SupplierReturnItem" sri ON sri.id = srib."supplierReturnItemId"
+                JOIN "SupplierReturn" sr ON sr.id = sri."supplierReturnId"
+                WHERE sr."date" >= ($2::date + interval '1 day') AND sr.status = 'POSTED'
+                GROUP BY srib."productBatchId"::text
+            ),
+            BatchEndBalances AS (
                 SELECT 
                     pb."productId",
-                    SUM(CASE WHEN COALESCE(gr."date", br."date") < $1::date THEN pb."quantityTotal" ELSE 0 END) as start_in,
-                    SUM(CASE WHEN COALESCE(gr."date", br."date") >= $1::date AND COALESCE(gr."date", br."date") < ($2::date + interval '1 day') THEN pb."quantityTotal" ELSE 0 END) as period_in,
+                    CASE 
+                        WHEN COALESCE(gr."date", br."date", st."date", ic."date") < ($2::date + interval '1 day')
+                        THEN pb."quantityLeft" + COALESCE(roap.qty, 0) + COALESCE(sroap.qty, 0)
+                        ELSE 0 
+                    END as end_balance
+                FROM "ProductBatch" pb
+                LEFT JOIN "GoodsReceipt" gr ON gr.id::text = pb."goodsReceiptId"::text
+                LEFT JOIN "BuyerReturn" br ON br.id::text = pb."buyerReturnId"::text
+                LEFT JOIN "StockTransfer" st ON st.id::text = pb."stockTransferId"::text
+                LEFT JOIN "InventoryCount" ic ON ic.id::text = pb."inventoryCountId"::text
+                LEFT JOIN RealizationOutAfterPeriod roap ON roap."productBatchId" = pb.id::text
+                LEFT JOIN SupplierReturnOutAfterPeriod sroap ON sroap."productBatchId" = pb.id::text
+                WHERE COALESCE(gr."warehouseId", br."warehouseId", st."toWarehouseId", ic."warehouseId")::text = $3
+            ),
+            ProductEndBalance AS (
+                SELECT "productId", SUM(end_balance) as end_balance
+                FROM BatchEndBalances
+                GROUP BY "productId"
+            ),
+            BatchIncoming AS (
+                SELECT 
+                    pb."productId",
+                    SUM(CASE WHEN COALESCE(gr."date", br."date", st."date", ic."date") >= $1::date AND COALESCE(gr."date", br."date", st."date", ic."date") < ($2::date + interval '1 day') THEN pb."quantityTotal" ELSE 0 END) as period_in,
                     JSON_AGG(
-                        CASE WHEN COALESCE(gr."date", br."date") >= $1::date AND COALESCE(gr."date", br."date") < ($2::date + interval '1 day') THEN
+                        CASE WHEN COALESCE(gr."date", br."date", st."date", ic."date") >= $1::date AND COALESCE(gr."date", br."date", st."date", ic."date") < ($2::date + interval '1 day') THEN
                             json_build_object(
-                                'id', COALESCE(gr.id, br.id),
-                                'type', CASE WHEN gr.id IS NOT NULL THEN 'GOODS_RECEIPT' ELSE 'BUYER_RETURN' END,
-                                'docNumber', COALESCE(gr."docNumber", br."number"),
+                                'id', COALESCE(gr.id, br.id, st.id, ic.id),
+                                'type', CASE 
+                                    WHEN gr.id IS NOT NULL THEN 'GOODS_RECEIPT' 
+                                    WHEN br.id IS NOT NULL THEN 'BUYER_RETURN' 
+                                    WHEN st.id IS NOT NULL THEN 'STOCK_TRANSFER'
+                                    ELSE 'INVENTORY_COUNT'
+                                END,
+                                'docNumber', COALESCE(gr."docNumber", br."number", st."number", ic."number"),
                                 'date', COALESCE(gr."date", br."date", st."date", ic."date"),
                                 'quantity', pb."quantityTotal"
                             )
@@ -174,7 +216,6 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
             BatchOutgoing AS (
                 SELECT 
                     "productId",
-                    SUM(CASE WHEN event_date < $1::date THEN quantity ELSE 0 END) as start_out,
                     SUM(CASE WHEN event_date >= $1::date AND event_date < ($2::date + interval '1 day') THEN quantity ELSE 0 END) as period_out,
                     JSON_AGG(
                         CASE WHEN event_date >= $1::date AND event_date < ($2::date + interval '1 day') THEN
@@ -195,15 +236,16 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
                 p.name as "productName",
                 p.category as "productCategory",
                 w.name as "warehouseName",
-                COALESCE(bi.start_in, 0) - COALESCE(bo.start_out, 0) as "startBalance",
+                COALESCE(peb.end_balance, 0) - COALESCE(bi.period_in, 0) + COALESCE(bo.period_out, 0) as "startBalance",
                 COALESCE(bi.period_in, 0) as "incoming",
                 COALESCE(bo.period_out, 0) as "outgoing",
-                (COALESCE(bi.start_in, 0) - COALESCE(bo.start_out, 0)) + COALESCE(bi.period_in, 0) - COALESCE(bo.period_out, 0) as "endBalance",
+                COALESCE(peb.end_balance, 0) as "endBalance",
                 bi.incoming_docs,
                 bo.outgoing_docs
             FROM "Product" p
-            LEFT JOIN BatchIncoming bi ON p.id::text = bi."productId"::text
-            LEFT JOIN BatchOutgoing bo ON p.id::text = bo."productId"::text
+            LEFT JOIN ProductEndBalance peb ON peb."productId"::text = p.id::text
+            LEFT JOIN BatchIncoming bi ON bi."productId"::text = p.id::text
+            LEFT JOIN BatchOutgoing bo ON bo."productId"::text = p.id::text
             LEFT JOIN "Warehouse" w ON w.id::text = $3
             WHERE p."deleted" = false
         `;
