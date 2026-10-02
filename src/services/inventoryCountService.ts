@@ -163,7 +163,7 @@ export class InventoryCountService {
                         new Date(),
                         undefined,
                         undefined,
-                        undefined
+                        inventoryCountId
                     );
                 }
             }
