@@ -331,7 +331,7 @@ export class ClientPriceDocumentService {
 
                 let sortOrder = 0;
                 for (const item of uniqueMap.values()) {
-                    const discountPercent = Math.min(100, Math.max(0, Number(item.discountPercent) || 0));
+                    const discountPercent = Math.min(100, Number(item.discountPercent) || 0);
                     const basePrice = Number(item.basePrice) || 0;
                     const costPrice = Number(item.costPrice) || 0;
                     const finalPrice = calculateClientFinalPrice(basePrice, discountPercent, roundingMethod, roundingValue || undefined);
@@ -405,7 +405,7 @@ export class ClientPriceDocumentService {
 
                 let sortOrder = 0;
                 for (const item of uniqueMap.values()) {
-                    const discountPercent = Math.min(100, Math.max(0, Number(item.discountPercent) || 0));
+                    const discountPercent = Math.min(100, Number(item.discountPercent) || 0);
                     const basePrice = Number(item.basePrice) || 0;
                     const costPrice = Number(item.costPrice) || 0;
                     const finalPrice = calculateClientFinalPrice(basePrice, discountPercent, roundingMethod, roundingValue || undefined);
@@ -504,7 +504,7 @@ export class ClientPriceDocumentService {
 
             for (const item of itemsRes.rows) {
                 const discountPercent = Number(item.discountPercent);
-                if (discountPercent > 0) {
+                if (discountPercent !== 0) {
                     await client.query(`
                         INSERT INTO "CounterpartyDiscountMatrix" (
                             "counterpartyId", "productId", "discountPercent", "documentId", "updatedAt"
