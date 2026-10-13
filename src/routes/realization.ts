@@ -15,9 +15,10 @@ router.get('/', userAuth, async (req, res) => {
         const { includeDeleted } = req.query;
         const user = (req as AuthRequest).user;
         let query = `
-            SELECT r.*, c.name as "counterpartyName", w.name as "warehouseName"
+            SELECT r.*, c.name as "counterpartyName", c.address as "counterpartyAddress", c.phone as "counterpartyPhone", COALESCE(g.name, 'Без групи') as "counterpartyGroupName", w.name as "warehouseName"
             FROM "Realization" r
             LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
+            LEFT JOIN "CounterpartyGroup" g ON c."groupId" = g.id
             LEFT JOIN "Warehouse" w ON r."warehouseId" = w.id
             WHERE 1=1
         `;

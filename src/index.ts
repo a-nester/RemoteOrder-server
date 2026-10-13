@@ -27,6 +27,7 @@ import inventoryCountRoutes from './routes/inventoryCount.js';
 import stockTransferRoutes from './routes/stockTransfer.js';
 import clientPriceDocumentRoutes from './routes/clientPriceDocumentRoutes.js';
 import backupRoutes from './routes/backupRoutes.js';
+import routeSheetRoutes from './routes/routeSheet.js';
 
 import { BackupService } from './services/backupService.js';
 import path from 'path';
@@ -114,6 +115,7 @@ app.use('/api/picking-list', pickingListRoutes);
 app.use('/api/territories', territoryRoutes);
 app.use('/api/inventory-count', inventoryCountRoutes);
 app.use('/api/stock-transfers', stockTransferRoutes);
+app.use('/api/route-sheets', routeSheetRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -182,6 +184,7 @@ import { runMigration as createClientPriceTablesMigration } from './migrations/1
 import { runMigration as addClientPriceRoundingMethodMigration } from './migrations/125_add_client_price_rounding_method.js';
 import { up as addClientPriceRoundingValueMigration } from './migrations/126_add_client_price_rounding_value.js';
 import { runMigration as addInventoryCountToProductBatchMigration } from './migrations/127_add_inventory_count_to_product_batch.js';
+import { runMigration as createRouteSheetTablesMigration } from './migrations/129_create_route_sheet_tables.js';
 
 const start = async () => {
   try {
@@ -230,6 +233,7 @@ const start = async () => {
     await addClientPriceRoundingMethodMigration();
     await addClientPriceRoundingValueMigration();
     await addInventoryCountToProductBatchMigration();
+    await createRouteSheetTablesMigration();
 
 
     app.listen(Number(PORT), '0.0.0.0', () => {
