@@ -94,10 +94,11 @@ router.get('/:id', userAuth, async (req: AuthRequest, res: Response) => {
         // If items exist, also fetch the product lines for each realization so print form is complete
         const realizationIds = itemsRes.rows.map(r => r.realizationId).filter(Boolean);
         let realizationItemsMap: Record<string, any[]> = {};
+        let realizationWeightsMap: Record<string, number> = {};
 
         if (realizationIds.length > 0) {
             const relItemsRes = await pool.query(`
-                SELECT ri.*, p.name as "productName", p.unit
+                SELECT ri.*, p.name as "productName", p.unit, COALESCE(p.weight, 0) as "weight"
                 FROM "RealizationItem" ri
                 LEFT JOIN "Product" p ON ri."productId" = p.id::text
                 WHERE ri."realizationId" = ANY($1::uuid[])
@@ -105,6 +106,11 @@ router.get('/:id', userAuth, async (req: AuthRequest, res: Response) => {
             `, [realizationIds]);
 
             relItemsRes.rows.forEach(item => {
+                const qty = Number(item.quantity || 0);
+                const pWeight = Number(item.weight || 0);
+                const itemWeight = (item.unit === 'кг') ? qty : (pWeight > 0 ? qty * pWeight : 0);
+                realizationWeightsMap[item.realizationId] = (realizationWeightsMap[item.realizationId] || 0) + itemWeight;
+
                 if (!realizationItemsMap[item.realizationId]) {
                     realizationItemsMap[item.realizationId] = [];
                 }
@@ -173,6 +179,7 @@ router.get('/:id', userAuth, async (req: AuthRequest, res: Response) => {
 
         const seenCp = new Set<string>();
         let totalPreviousDebt = 0;
+        let totalWeight = 0;
 
         const enrichedItems = itemsRes.rows.map(item => {
             let prevDebt = previousDebtMap[item.counterpartyId] ?? 0;
@@ -184,9 +191,13 @@ router.get('/:id', userAuth, async (req: AuthRequest, res: Response) => {
             const roundedDebt = Math.round(prevDebt * 100) / 100;
             totalPreviousDebt += roundedDebt;
 
+            const relWeight = Math.round((realizationWeightsMap[item.realizationId] || 0) * 1000) / 1000;
+            totalWeight += relWeight;
+
             return {
                 ...item,
                 previousDebt: roundedDebt,
+                realizationWeight: relWeight,
                 realizationItems: realizationItemsMap[item.realizationId] || []
             };
         });
@@ -194,6 +205,7 @@ router.get('/:id', userAuth, async (req: AuthRequest, res: Response) => {
         res.json({
             ...docRes.rows[0],
             totalPreviousDebt: Math.round(totalPreviousDebt * 100) / 100,
+            totalWeight: Math.round(totalWeight * 1000) / 1000,
             items: enrichedItems
         });
     } catch (error) {
