@@ -92,7 +92,7 @@ router.get('/:id', userAuth, async (req: AuthRequest, res: Response) => {
         `, [id]);
 
         // If items exist, also fetch the product lines for each realization so print form is complete
-        const realizationIds = itemsRes.rows.map(r => r.realizationId);
+        const realizationIds = itemsRes.rows.map(r => r.realizationId).filter(Boolean);
         let realizationItemsMap: Record<string, any[]> = {};
 
         if (realizationIds.length > 0) {
@@ -112,13 +112,88 @@ router.get('/:id', userAuth, async (req: AuthRequest, res: Response) => {
             });
         }
 
-        const enrichedItems = itemsRes.rows.map(item => ({
-            ...item,
-            realizationItems: realizationItemsMap[item.realizationId] || []
-        }));
+        // Calculate previous debt for each counterparty (excluding realizations of this route sheet)
+        const cpIds = Array.from(new Set(itemsRes.rows.map(r => r.counterpartyId).filter(Boolean)));
+        let previousDebtMap: Record<string, number> = {};
+
+        if (cpIds.length > 0 && realizationIds.length > 0) {
+            const balQuery = `
+                SELECT 
+                    t."counterpartyId",
+                    COALESCE(SUM(t.balance_change), 0)::numeric as "previousDebt"
+                FROM (
+                    SELECT "counterpartyId", COALESCE(SUM(amount), 0) as balance_change
+                    FROM "Realization"
+                    WHERE status = 'POSTED' 
+                      AND "counterpartyId" = ANY($1::uuid[]) 
+                      AND NOT (id = ANY($2::uuid[]))
+                    GROUP BY "counterpartyId"
+
+                    UNION ALL
+
+                    SELECT "counterpartyId", -COALESCE(SUM("totalAmount"), 0) as balance_change
+                    FROM "BuyerReturn"
+                    WHERE status = 'POSTED' 
+                      AND "counterpartyId" = ANY($1::uuid[])
+                    GROUP BY "counterpartyId"
+
+                    UNION ALL
+
+                    SELECT gr."providerId" as "counterpartyId", -COALESCE(SUM(gri.total), 0) as balance_change
+                    FROM "GoodsReceipt" gr
+                    JOIN "GoodsReceiptItem" gri ON gr.id = gri."goodsReceiptId"
+                    WHERE gr.status = 'POSTED' 
+                      AND gr."providerId" = ANY($1::uuid[])
+                    GROUP BY gr."providerId"
+
+                    UNION ALL
+
+                    SELECT "supplierId" as "counterpartyId", COALESCE(SUM("totalAmount"), 0) as balance_change
+                    FROM "SupplierReturn"
+                    WHERE status = 'POSTED' 
+                      AND "supplierId" = ANY($1::uuid[])
+                    GROUP BY "supplierId"
+
+                    UNION ALL
+
+                    SELECT "counterpartyId", COALESCE(SUM(CASE WHEN type = 'INCOME' THEN -amount ELSE amount END), 0) as balance_change
+                    FROM "CashTransaction"
+                    WHERE "isDeleted" = FALSE 
+                      AND "counterpartyId" = ANY($1::uuid[])
+                    GROUP BY "counterpartyId"
+                ) t
+                GROUP BY t."counterpartyId"
+            `;
+
+            const balRes = await pool.query(balQuery, [cpIds, realizationIds]);
+            balRes.rows.forEach(r => {
+                previousDebtMap[r.counterpartyId] = parseFloat(r.previousDebt) || 0;
+            });
+        }
+
+        const seenCp = new Set<string>();
+        let totalPreviousDebt = 0;
+
+        const enrichedItems = itemsRes.rows.map(item => {
+            let prevDebt = previousDebtMap[item.counterpartyId] ?? 0;
+            if (seenCp.has(item.counterpartyId)) {
+                prevDebt = 0;
+            } else {
+                seenCp.add(item.counterpartyId);
+            }
+            const roundedDebt = Math.round(prevDebt * 100) / 100;
+            totalPreviousDebt += roundedDebt;
+
+            return {
+                ...item,
+                previousDebt: roundedDebt,
+                realizationItems: realizationItemsMap[item.realizationId] || []
+            };
+        });
 
         res.json({
             ...docRes.rows[0],
+            totalPreviousDebt: Math.round(totalPreviousDebt * 100) / 100,
             items: enrichedItems
         });
     } catch (error) {
