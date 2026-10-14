@@ -12,15 +12,15 @@ const router = express.Router();
 // List Realizations
 router.get('/', userAuth, async (req, res) => {
     try {
-        const { includeDeleted } = req.query;
+        const { includeDeleted, dateFrom, dateTo } = req.query;
         const user = (req as AuthRequest).user;
         let query = `
             SELECT r.*, c.name as "counterpartyName", c.address as "counterpartyAddress", c.phone as "counterpartyPhone", COALESCE(g.name, 'Без групи') as "counterpartyGroupName", w.name as "warehouseName",
                    COALESCE(
                        (SELECT json_agg(json_build_object('productId', ri."productId", 'productName', p.name, 'category', p.category))
                         FROM "RealizationItem" ri
-                        LEFT JOIN "Product" p ON ri."productId"::text = p.id::text
-                        WHERE ri."realizationId"::text = r.id::text), '[]'::json
+                        LEFT JOIN "Product" p ON ri."productId" = p.id::text
+                        WHERE ri."realizationId" = r.id), '[]'::json
                    ) as "items"
             FROM "Realization" r
             LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
@@ -49,6 +49,18 @@ router.get('/', userAuth, async (req, res) => {
             paramIndex++;
         }
 
+        if (dateFrom) {
+            query += ` AND r.date >= $${paramIndex}::date`;
+            values.push(dateFrom);
+            paramIndex++;
+        }
+
+        if (dateTo) {
+            query += ` AND r.date < ($${paramIndex}::date + interval '1 day')`;
+            values.push(dateTo);
+            paramIndex++;
+        }
+
         if (includeDeleted !== 'true') {
             query += ` AND r."isDeleted" = FALSE`;
         }
@@ -57,9 +69,9 @@ router.get('/', userAuth, async (req, res) => {
         
         const result = await pool.query(query, values);
         res.json(result.rows);
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error fetching realizations:', error);
-        res.status(500).json({ message: 'Server error' });
+        res.status(500).json({ message: 'Server error', error: error?.message || String(error) });
     }
 });
 

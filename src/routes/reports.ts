@@ -417,9 +417,9 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
 
         if (product || productCategories || productIds) {
             const pCondR = buildProductFilter(params, product, productCategories, productIds, 'p_item');
-            rFilters += ` AND EXISTS (SELECT 1 FROM "RealizationItem" ri_p JOIN "Product" p_item ON ri_p."productId"::text = p_item.id::text WHERE ri_p."realizationId"::text = r.id::text ${pCondR})`;
+            rFilters += ` AND EXISTS (SELECT 1 FROM "RealizationItem" ri_p JOIN "Product" p_item ON ri_p."productId" = p_item.id::text WHERE ri_p."realizationId" = r.id ${pCondR})`;
             const pCondBr = buildProductFilter(params, product, productCategories, productIds, 'p_item');
-            brFilters += ` AND EXISTS (SELECT 1 FROM "BuyerReturnItem" bri_p JOIN "Product" p_item ON bri_p."productId"::text = p_item.id::text WHERE bri_p."buyerReturnId"::text = br.id::text ${pCondBr})`;
+            brFilters += ` AND EXISTS (SELECT 1 FROM "BuyerReturnItem" bri_p JOIN "Product" p_item ON bri_p."productId" = p_item.id WHERE bri_p."buyerReturnId" = br.id ${pCondBr})`;
         }
 
         const VAT_COEFF_SQL = `COALESCE((SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" > 1.0 ORDER BY "updatedAt" DESC LIMIT 1), (SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" IS NOT NULL ORDER BY "updatedAt" DESC LIMIT 1), 1.0)`;

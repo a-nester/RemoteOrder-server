@@ -288,8 +288,8 @@ export class BuyerReturnService {
                    COALESCE(
                        (SELECT json_agg(json_build_object('productId', bri."productId", 'productName', p.name, 'category', p.category))
                         FROM "BuyerReturnItem" bri
-                        LEFT JOIN "Product" p ON bri."productId"::text = p.id::text
-                        WHERE bri."buyerReturnId"::text = br.id::text), '[]'::json
+                        LEFT JOIN "Product" p ON bri."productId" = p.id
+                        WHERE bri."buyerReturnId" = br.id), '[]'::json
                    ) as "items"
             FROM "BuyerReturn" br
             LEFT JOIN "Counterparty" c ON c.id = br."counterpartyId"
@@ -299,13 +299,15 @@ export class BuyerReturnService {
         const params: any[] = [];
         let pIdx = 1;
 
-        if (filters.startDate) {
-            query += ` AND br.date >= $${pIdx++}`;
-            params.push(filters.startDate);
+        const startDate = filters?.startDate || filters?.dateFrom;
+        const endDate = filters?.endDate || filters?.dateTo;
+        if (startDate) {
+            query += ` AND br.date >= $${pIdx++}::date`;
+            params.push(startDate);
         }
-        if (filters.endDate) {
-            query += ` AND br.date <= $${pIdx++}`;
-            params.push(filters.endDate);
+        if (endDate) {
+            query += ` AND br.date < ($${pIdx++}::date + interval '1 day')`;
+            params.push(endDate);
         }
         if (filters.allowedWarehouses !== undefined && filters.allowedWarehouses !== null) {
             if (filters.allowedWarehouses.length > 0) {
