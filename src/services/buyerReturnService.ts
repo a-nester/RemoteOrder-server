@@ -284,7 +284,13 @@ export class BuyerReturnService {
     // List
     static async getAll(filters: any) {
         let query = `
-            SELECT br.*, c.name as "counterpartyName", w.name as "warehouseName"
+            SELECT br.*, c.name as "counterpartyName", w.name as "warehouseName",
+                   COALESCE(
+                       (SELECT json_agg(json_build_object('productId', bri."productId", 'productName', p.name, 'category', p.category))
+                        FROM "BuyerReturnItem" bri
+                        LEFT JOIN "Product" p ON bri."productId" = p.id
+                        WHERE bri."buyerReturnId" = br.id), '[]'::json
+                   ) as "items"
             FROM "BuyerReturn" br
             LEFT JOIN "Counterparty" c ON c.id = br."counterpartyId"
             LEFT JOIN "Warehouse" w ON w.id = br."warehouseId"

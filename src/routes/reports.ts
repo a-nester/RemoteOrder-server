@@ -295,10 +295,48 @@ router.get('/inventory-movement', async (req: Request, res: Response) => {
 
 import { getUserAllowedTerritories } from '../utils/userUtils.js';
 
+function buildProductFilter(
+    params: any[],
+    product?: any,
+    productCategories?: any,
+    productIds?: any,
+    productAlias: string = 'p'
+): string {
+    let filter = '';
+    if (product) {
+        filter += ` AND ${productAlias}.name ILIKE $${params.length + 1}`;
+        params.push(`%${String(product).trim()}%`);
+    }
+    if (productCategories) {
+        const catArr = (Array.isArray(productCategories) ? productCategories : String(productCategories).split(',')).map((c: any) => String(c).trim()).filter(Boolean);
+        if (catArr.length > 0) {
+            const hasUncat = catArr.includes('Без категорії');
+            const nonUncat = catArr.filter(c => c !== 'Без категорії');
+            if (hasUncat && nonUncat.length > 0) {
+                filter += ` AND (${productAlias}.category = ANY($${params.length + 1}::text[]) OR ${productAlias}.category IS NULL OR ${productAlias}.category = '')`;
+                params.push(nonUncat);
+            } else if (hasUncat) {
+                filter += ` AND (${productAlias}.category IS NULL OR ${productAlias}.category = '')`;
+            } else {
+                filter += ` AND ${productAlias}.category = ANY($${params.length + 1}::text[])`;
+                params.push(nonUncat);
+            }
+        }
+    }
+    if (productIds) {
+        const pArr = (Array.isArray(productIds) ? productIds : String(productIds).split(',')).map((id: any) => String(id).trim()).filter(Boolean);
+        if (pArr.length > 0) {
+            filter += ` AND ${productAlias}.id::text = ANY($${params.length + 1}::text[])`;
+            params.push(pArr);
+        }
+    }
+    return filter;
+}
+
 // GET /api/reports/sales/by-client
 router.get('/sales/by-client', async (req: Request, res: Response) => {
     try {
-        const { dateFrom, dateTo, counterparty, groupIds, counterpartyIds, groupBySalesType, salesType, includeReturns } = req.query;
+        const { dateFrom, dateTo, counterparty, groupIds, counterpartyIds, groupBySalesType, salesType, includeReturns, product, productCategories, productIds } = req.query;
         const user = (req as AuthRequest).user;
         let params: any[] = [];
         let rFilters = '';
@@ -377,6 +415,13 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
             }
         }
 
+        if (product || productCategories || productIds) {
+            const pCondR = buildProductFilter(params, product, productCategories, productIds, 'p_item');
+            rFilters += ` AND EXISTS (SELECT 1 FROM "RealizationItem" ri_p JOIN "Product" p_item ON ri_p."productId" = p_item.id WHERE ri_p."realizationId" = r.id ${pCondR})`;
+            const pCondBr = buildProductFilter(params, product, productCategories, productIds, 'p_item');
+            brFilters += ` AND EXISTS (SELECT 1 FROM "BuyerReturnItem" bri_p JOIN "Product" p_item ON bri_p."productId" = p_item.id WHERE bri_p."buyerReturnId" = br.id ${pCondBr})`;
+        }
+
         const VAT_COEFF_SQL = `COALESCE((SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" > 1.0 ORDER BY "updatedAt" DESC LIMIT 1), (SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" IS NOT NULL ORDER BY "updatedAt" DESC LIMIT 1), 1.0)`;
 
         const query = `
@@ -450,9 +495,6 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
         `;
 
         const result = await pool.query(query, params);
-        console.log('DEBUG sales/by-client SQL:', query);
-        console.log('DEBUG sales/by-client params:', params);
-        console.log('DEBUG sales/by-client result.rows:', result.rows);
         res.json(result.rows);
     } catch (error) {
         console.error('Error fetching sales by client:', error);
@@ -463,7 +505,7 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
 // GET /api/reports/sales/by-client/details
 router.get('/sales/by-client/details', async (req: Request, res: Response) => {
     try {
-        const { dateFrom, dateTo, clientId, salesType } = req.query;
+        const { dateFrom, dateTo, clientId, salesType, product, productCategories, productIds } = req.query;
         if (!clientId) return res.status(400).json({ error: 'clientId is required' });
 
         const user = (req as AuthRequest).user;
@@ -569,6 +611,7 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
                 CASE WHEN SUM(bi."netQty") > 0 THEN SUM(bi."netAmount") / SUM(bi."netQty") ELSE 0 END as "averagePrice"
             FROM BaseItems bi
             LEFT JOIN "Product" p ON bi."productId" = p.id::text
+            WHERE 1=1 ${buildProductFilter(params, product, productCategories, productIds, 'p')}
             GROUP BY p.name, p.unit
             ORDER BY "quantity" DESC NULLS LAST
         `;
@@ -584,7 +627,7 @@ router.get('/sales/by-client/details', async (req: Request, res: Response) => {
 // GET /api/reports/sales/by-product
 router.get('/sales/by-product', async (req: Request, res: Response) => {
     try {
-        const { dateFrom, dateTo, counterparty, groupIds, counterpartyIds, groupBySalesType, salesType, includeReturns } = req.query;
+        const { dateFrom, dateTo, counterparty, groupIds, counterpartyIds, groupBySalesType, salesType, includeReturns, product, productCategories, productIds } = req.query;
         const user = (req as AuthRequest).user;
         let params: any[] = [];
         let rFilters = '';
@@ -744,6 +787,7 @@ router.get('/sales/by-product', async (req: Request, res: Response) => {
                 SUM(bi."netProfit") as "totalProfit"
             FROM BaseItems bi
             LEFT JOIN "Product" p ON p.id::text = bi."productId"
+            WHERE 1=1 ${buildProductFilter(params, product, productCategories, productIds, 'p')}
             GROUP BY p.id, p.name, p.category, p.unit ${groupBySalesType === 'true' ? ', bi."salesType"' : ''}
             ORDER BY "totalAmount" DESC NULLS LAST
         `;

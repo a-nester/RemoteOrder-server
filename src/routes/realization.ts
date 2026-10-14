@@ -15,7 +15,13 @@ router.get('/', userAuth, async (req, res) => {
         const { includeDeleted } = req.query;
         const user = (req as AuthRequest).user;
         let query = `
-            SELECT r.*, c.name as "counterpartyName", c.address as "counterpartyAddress", c.phone as "counterpartyPhone", COALESCE(g.name, 'Без групи') as "counterpartyGroupName", w.name as "warehouseName"
+            SELECT r.*, c.name as "counterpartyName", c.address as "counterpartyAddress", c.phone as "counterpartyPhone", COALESCE(g.name, 'Без групи') as "counterpartyGroupName", w.name as "warehouseName",
+                   COALESCE(
+                       (SELECT json_agg(json_build_object('productId', ri."productId", 'productName', p.name, 'category', p.category))
+                        FROM "RealizationItem" ri
+                        LEFT JOIN "Product" p ON ri."productId" = p.id
+                        WHERE ri."realizationId" = r.id), '[]'::json
+                   ) as "items"
             FROM "Realization" r
             LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
             LEFT JOIN "CounterpartyGroup" g ON c."groupId" = g.id
