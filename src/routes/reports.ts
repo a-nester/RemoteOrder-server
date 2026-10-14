@@ -333,6 +333,202 @@ function buildProductFilter(
     return filter;
 }
 
+// GET /api/reports/sales/general
+router.get('/sales/general', async (req: Request, res: Response) => {
+    try {
+        const { dateFrom, dateTo, counterparty, groupIds, counterpartyIds, salesType, includeReturns, product, productCategories, productIds } = req.query;
+        const user = (req as AuthRequest).user;
+        let params: any[] = [];
+        let rFilters = '';
+        let brFilters = '';
+
+        if (user && user.role !== 'admin' && user.warehouseId) {
+            rFilters += ` AND r."warehouseId" = $${params.length + 1}`;
+            brFilters += ` AND br."warehouseId" = $${params.length + 1}`;
+            params.push(user.warehouseId);
+        }
+
+        const allowedTerritories = getUserAllowedTerritories(user);
+        if (allowedTerritories !== null && allowedTerritories.length > 0) {
+            rFilters += ` AND c."territoryId"::text = ANY($${params.length + 1}::text[])`;
+            brFilters += ` AND c."territoryId"::text = ANY($${params.length + 1}::text[])`;
+            params.push(allowedTerritories);
+        }
+
+        if (dateFrom && dateTo) {
+            rFilters += ` AND r.date >= $${params.length + 1}::date AND r.date < ($${params.length + 2}::date + interval '1 day')`;
+            brFilters += ` AND br.date >= $${params.length + 1}::date AND br.date < ($${params.length + 2}::date + interval '1 day')`;
+            params.push(dateFrom, dateTo);
+        } else if (dateFrom) {
+            rFilters += ` AND r.date >= $${params.length + 1}::date`;
+            brFilters += ` AND br.date >= $${params.length + 1}::date`;
+            params.push(dateFrom);
+        } else if (dateTo) {
+            rFilters += ` AND r.date < ($${params.length + 1}::date + interval '1 day')`;
+            brFilters += ` AND br.date < ($${params.length + 1}::date + interval '1 day')`;
+            params.push(dateTo);
+        }
+
+        if (counterparty) {
+            rFilters += ` AND c.name ILIKE $${params.length + 1}`;
+            brFilters += ` AND c.name ILIKE $${params.length + 1}`;
+            params.push(`%${counterparty}%`);
+        }
+
+        if (groupIds) {
+            const groupArr = (Array.isArray(groupIds) ? groupIds : String(groupIds).split(',')).filter(Boolean);
+            if (groupArr.length > 0) {
+                rFilters += ` AND c."groupId"::text = ANY($${params.length + 1}::text[])`;
+                brFilters += ` AND c."groupId"::text = ANY($${params.length + 1}::text[])`;
+                params.push(groupArr);
+            }
+        }
+
+        if (counterpartyIds) {
+            const cpArr = (Array.isArray(counterpartyIds) ? counterpartyIds : String(counterpartyIds).split(',')).filter(Boolean);
+            if (cpArr.length > 0) {
+                rFilters += ` AND c.id::text = ANY($${params.length + 1}::text[])`;
+                brFilters += ` AND c.id::text = ANY($${params.length + 1}::text[])`;
+                params.push(cpArr);
+            }
+        }
+
+        if (salesType) {
+            const stArr = (Array.isArray(salesType) ? salesType : String(salesType).split(',')).map((s: any) => String(s).trim()).filter(Boolean);
+            if (stArr.length > 0) {
+                if (stArr.includes('Повернення') && stArr.length === 1) {
+                    rFilters += ` AND FALSE`;
+                    if (includeReturns === 'true') brFilters += ` AND FALSE`;
+                } else if (stArr.includes('Не визначено')) {
+                    rFilters += ` AND ((r."salesType" IS NULL OR r."salesType" = '') AND c."defaultSalesType" IS NULL OR COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = ANY($${params.length + 1}::text[]))`;
+                    params.push(stArr);
+                    if (!(includeReturns === 'true' && stArr.includes('Готівковий'))) {
+                        brFilters += ` AND FALSE`;
+                    }
+                } else {
+                    rFilters += ` AND COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = ANY($${params.length + 1}::text[])`;
+                    params.push(stArr);
+                    if (!(includeReturns === 'true' && stArr.includes('Готівковий'))) {
+                        brFilters += ` AND FALSE`;
+                    }
+                }
+            }
+        }
+
+        let pFilterRealization = '';
+        let pFilterBuyerReturn = '';
+        if (product || productCategories || productIds) {
+            pFilterRealization = buildProductFilter(params, product, productCategories, productIds, 'p');
+            pFilterBuyerReturn = buildProductFilter(params, product, productCategories, productIds, 'p');
+        }
+
+        const VAT_COEFF_SQL = `COALESCE((SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" > 1.0 ORDER BY "updatedAt" DESC LIMIT 1), (SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" IS NOT NULL ORDER BY "updatedAt" DESC LIMIT 1), 1.0)`;
+
+        const query = `
+            WITH BaseItems AS (
+                SELECT 
+                    r.id,
+                    r.number,
+                    r.date,
+                    r."counterpartyId",
+                    c.name as "counterpartyName",
+                    w.name as "warehouseName",
+                    r.status,
+                    r.currency,
+                    COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') as "salesType",
+                    ri.quantity as "netQty",
+                    ri.total as "netAmount",
+                    COALESCE((
+                        SELECT SUM(rib.quantity * rib."enterPrice")
+                        FROM "RealizationItemBatch" rib
+                        WHERE rib."realizationItemId" = ri.id
+                    ), 0) as "netCleanCost",
+                    COALESCE((
+                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
+                        FROM "RealizationItemBatch" rib
+                        WHERE rib."realizationItemId" = ri.id
+                    ), 0) as "netPurchaseCost",
+                    ri.total - COALESCE((
+                        SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
+                        FROM "RealizationItemBatch" rib
+                        WHERE rib."realizationItemId" = ri.id
+                    ), 0) as "netProfit"
+                FROM "RealizationItem" ri
+                JOIN "Realization" r ON r.id = ri."realizationId"
+                LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
+                LEFT JOIN "Warehouse" w ON r."warehouseId" = w.id
+                JOIN "Product" p ON p.id::text = ri."productId"
+                WHERE r.status = 'POSTED' ${rFilters} ${pFilterRealization}
+
+                UNION ALL
+
+                SELECT 
+                    br.id,
+                    CONCAT('Пов. #', br.number) as number,
+                    br.date,
+                    br."counterpartyId",
+                    c.name as "counterpartyName",
+                    w.name as "warehouseName",
+                    br.status,
+                    'UAH' as currency,
+                    ${includeReturns === 'true' ? "'Готівковий'" : "'Повернення'"} as "salesType",
+                    -bri.quantity as "netQty",
+                    -bri.total as "netAmount",
+                    -(COALESCE((
+                        SELECT pb."enterPrice"
+                        FROM "BuyerReturnItemBatch" brib
+                        JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
+                        WHERE brib."buyerReturnItemId" = bri.id
+                        LIMIT 1
+                    ), 0) * bri.quantity) as "netCleanCost",
+                    -(COALESCE((
+                        SELECT pb."enterPrice"
+                        FROM "BuyerReturnItemBatch" brib
+                        JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
+                        WHERE brib."buyerReturnItemId" = bri.id
+                        LIMIT 1
+                    ), 0) * bri.quantity) as "netPurchaseCost",
+                    (COALESCE((
+                        SELECT pb."enterPrice"
+                        FROM "BuyerReturnItemBatch" brib
+                        JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
+                        WHERE brib."buyerReturnItemId" = bri.id
+                        LIMIT 1
+                    ), 0) * bri.quantity) - bri.total as "netProfit"
+                FROM "BuyerReturnItem" bri
+                JOIN "BuyerReturn" br ON br.id = bri."buyerReturnId"
+                LEFT JOIN "Counterparty" c ON br."counterpartyId" = c.id
+                LEFT JOIN "Warehouse" w ON br."warehouseId" = w.id
+                JOIN "Product" p ON p.id = bri."productId"
+                WHERE br.status = 'POSTED' ${brFilters} ${pFilterBuyerReturn}
+            )
+            SELECT 
+                bi.id,
+                bi.number,
+                bi.date,
+                bi."counterpartyId",
+                bi."counterpartyName",
+                bi."warehouseName",
+                bi.status,
+                bi.currency,
+                bi."salesType",
+                SUM(bi."netAmount") as "amount",
+                SUM(bi."netCleanCost") as "cleanCost",
+                SUM(bi."netPurchaseCost") as "costWithVat",
+                SUM(bi."netProfit") as "profit"
+            FROM BaseItems bi
+            GROUP BY bi.id, bi.number, bi.date, bi."counterpartyId", bi."counterpartyName", bi."warehouseName", bi.status, bi.currency, bi."salesType"
+            ORDER BY bi.date DESC
+        `;
+
+        const result = await pool.query(query, params);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching sales general:', error);
+        res.status(500).json({ error: 'Failed to fetch sales general' });
+    }
+});
+
 // GET /api/reports/sales/by-client
 router.get('/sales/by-client', async (req: Request, res: Response) => {
     try {
@@ -415,82 +611,91 @@ router.get('/sales/by-client', async (req: Request, res: Response) => {
             }
         }
 
+        let pFilterRealization = '';
+        let pFilterBuyerReturn = '';
         if (product || productCategories || productIds) {
-            const pCondR = buildProductFilter(params, product, productCategories, productIds, 'p_item');
-            rFilters += ` AND EXISTS (SELECT 1 FROM "RealizationItem" ri_p JOIN "Product" p_item ON ri_p."productId" = p_item.id::text WHERE ri_p."realizationId" = r.id ${pCondR})`;
-            const pCondBr = buildProductFilter(params, product, productCategories, productIds, 'p_item');
-            brFilters += ` AND EXISTS (SELECT 1 FROM "BuyerReturnItem" bri_p JOIN "Product" p_item ON bri_p."productId" = p_item.id WHERE bri_p."buyerReturnId" = br.id ${pCondBr})`;
+            pFilterRealization = buildProductFilter(params, product, productCategories, productIds, 'p');
+            pFilterBuyerReturn = buildProductFilter(params, product, productCategories, productIds, 'p');
         }
 
         const VAT_COEFF_SQL = `COALESCE((SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" > 1.0 ORDER BY "updatedAt" DESC LIMIT 1), (SELECT "vatCostCoefficient" FROM "Organization" WHERE "vatCostCoefficient" IS NOT NULL ORDER BY "updatedAt" DESC LIMIT 1), 1.0)`;
 
         const query = `
-            WITH BaseDocs AS (
+            WITH BaseItems AS (
                 SELECT 
                     r."counterpartyId",
                     r.id,
-                    r.amount as "netAmount",
+                    ri.quantity as "netQty",
+                    ri.total as "netAmount",
                     COALESCE((
                         SELECT SUM(rib.quantity * rib."enterPrice")
-                        FROM "RealizationItem" ri
-                        JOIN "RealizationItemBatch" rib ON rib."realizationItemId" = ri.id
-                        WHERE ri."realizationId" = r.id
+                        FROM "RealizationItemBatch" rib
+                        WHERE rib."realizationItemId" = ri.id
                     ), 0) as "netCleanCost",
                     COALESCE((
                         SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
-                        FROM "RealizationItem" ri
-                        JOIN "RealizationItemBatch" rib ON rib."realizationItemId" = ri.id
-                        WHERE ri."realizationId" = r.id
-                    ), 0) as "netCostWithVat",
-                    (r.amount - COALESCE((
+                        FROM "RealizationItemBatch" rib
+                        WHERE rib."realizationItemId" = ri.id
+                    ), 0) as "netPurchaseCost",
+                    ri.total - COALESCE((
                         SELECT SUM(rib.quantity * rib."enterPrice" * CASE WHEN COALESCE(NULLIF(r."salesType", ''), c."defaultSalesType", 'Готівковий') = 'з ПДВ' THEN ${VAT_COEFF_SQL} ELSE 1.0 END)
-                        FROM "RealizationItem" ri
-                        JOIN "RealizationItemBatch" rib ON rib."realizationItemId" = ri.id
-                        WHERE ri."realizationId" = r.id
-                    ), 0)) as "netProfit",
+                        FROM "RealizationItemBatch" rib
+                        WHERE rib."realizationItemId" = ri.id
+                    ), 0) as "netProfit",
                     ${groupBySalesType === 'true' ? "COALESCE(NULLIF(r.\"salesType\", ''), c.\"defaultSalesType\", 'Готівковий')" : "''"} as "salesType"
-                FROM "Realization" r
+                FROM "RealizationItem" ri
+                JOIN "Realization" r ON r.id = ri."realizationId"
                 LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id
-                WHERE r.status = 'POSTED' ${rFilters}
+                JOIN "Product" p ON p.id::text = ri."productId"
+                WHERE r.status = 'POSTED' ${rFilters} ${pFilterRealization}
                 
                 UNION ALL
                 
                 SELECT 
                     br."counterpartyId",
                     br.id,
-                    -br."totalAmount" as "netAmount",
-                    -COALESCE((
-                        SELECT SUM(brb.quantity * pb."enterPrice")
-                        FROM "BuyerReturnItem" bri
-                        JOIN "BuyerReturnItemBatch" brb ON brb."buyerReturnItemId" = bri.id
-                        JOIN "ProductBatch" pb ON pb.id = brb."productBatchId"
-                        WHERE bri."buyerReturnId" = br.id
-                    ), 0) as "netCleanCost",
-                    -COALESCE((
-                        SELECT SUM(brb.quantity * pb."enterPrice")
-                        FROM "BuyerReturnItem" bri
-                        JOIN "BuyerReturnItemBatch" brb ON brb."buyerReturnItemId" = bri.id
-                        JOIN "ProductBatch" pb ON pb.id = brb."productBatchId"
-                        WHERE bri."buyerReturnId" = br.id
-                    ), 0) as "netCostWithVat",
-                    -br.profit as "netProfit",
+                    -bri.quantity as "netQty",
+                    -bri.total as "netAmount",
+                    -(COALESCE((
+                        SELECT pb."enterPrice"
+                        FROM "BuyerReturnItemBatch" brib
+                        JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
+                        WHERE brib."buyerReturnItemId" = bri.id
+                        LIMIT 1
+                    ), 0) * bri.quantity) as "netCleanCost",
+                    -(COALESCE((
+                        SELECT pb."enterPrice"
+                        FROM "BuyerReturnItemBatch" brib
+                        JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
+                        WHERE brib."buyerReturnItemId" = bri.id
+                        LIMIT 1
+                    ), 0) * bri.quantity) as "netPurchaseCost",
+                    (COALESCE((
+                        SELECT pb."enterPrice"
+                        FROM "BuyerReturnItemBatch" brib
+                        JOIN "ProductBatch" pb ON pb.id = brib."productBatchId"
+                        WHERE brib."buyerReturnItemId" = bri.id
+                        LIMIT 1
+                    ), 0) * bri.quantity) - bri.total as "netProfit",
                     ${includeReturns === 'true' ? "'Готівковий'" : "'Повернення'"} as "salesType"
-                FROM "BuyerReturn" br
+                FROM "BuyerReturnItem" bri
+                JOIN "BuyerReturn" br ON br.id = bri."buyerReturnId"
                 LEFT JOIN "Counterparty" c ON br."counterpartyId" = c.id
-                WHERE br.status = 'POSTED' ${brFilters}
+                JOIN "Product" p ON p.id = bri."productId"
+                WHERE br.status = 'POSTED' ${brFilters} ${pFilterBuyerReturn}
             )
             SELECT 
                 c.id as "clientId",
                 c.name as "clientName",
-                ${groupBySalesType === 'true' ? 'bd."salesType",' : ''}
-                COUNT(bd.id) as "documentsCount",
-                SUM(bd."netAmount") as "totalAmount",
-                SUM(bd."netCleanCost") as "totalCleanCost",
-                SUM(bd."netCostWithVat") as "totalCostWithVat",
-                SUM(bd."netProfit") as "totalProfit"
-            FROM BaseDocs bd
-            LEFT JOIN "Counterparty" c ON bd."counterpartyId" = c.id
-            GROUP BY c.id, c.name ${groupBySalesType === 'true' ? ', bd."salesType"' : ''}
+                ${groupBySalesType === 'true' ? 'bi."salesType",' : ''}
+                COUNT(DISTINCT bi.id) as "documentsCount",
+                SUM(bi."netAmount") as "totalAmount",
+                SUM(bi."netCleanCost") as "totalCleanCost",
+                SUM(bi."netPurchaseCost") as "totalCostWithVat",
+                SUM(bi."netProfit") as "totalProfit"
+            FROM BaseItems bi
+            LEFT JOIN "Counterparty" c ON bi."counterpartyId" = c.id
+            GROUP BY c.id, c.name ${groupBySalesType === 'true' ? ', bi."salesType"' : ''}
             ORDER BY "totalAmount" DESC NULLS LAST
         `;
 
