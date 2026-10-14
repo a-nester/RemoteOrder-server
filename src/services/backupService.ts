@@ -36,7 +36,8 @@ export const BackupService = {
 
     try {
       if (dbUrl) {
-        const { stdout } = await execAsync(`pg_dump "${dbUrl}"`, { maxBuffer: 50 * 1024 * 1024 });
+        // Exclude DatabaseBackup to prevent dumping old backups recursively
+        const { stdout } = await execAsync(`pg_dump --exclude-table="DatabaseBackup" "${dbUrl}"`, { maxBuffer: 50 * 1024 * 1024 });
         sqlDumpContent = stdout;
       }
     } catch (e) {
@@ -239,6 +240,15 @@ export const BackupService = {
     for (const b of toDelete) {
       if (await BackupService.deleteBackup(b.filename)) {
         deletedCount++;
+      }
+    }
+
+    // Reclaim disk space from deleted TOAST chunks immediately
+    if (deletedCount > 0) {
+      try {
+        await pool.query('VACUUM FULL "DatabaseBackup";');
+      } catch (vacErr) {
+        console.warn('Could not run VACUUM FULL on DatabaseBackup table:', vacErr);
       }
     }
 
