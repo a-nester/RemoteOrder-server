@@ -19,8 +19,8 @@ router.get('/', userAuth, async (req, res) => {
                    COALESCE(
                        (SELECT json_agg(json_build_object('productId', ri."productId", 'productName', p.name, 'category', p.category))
                         FROM "RealizationItem" ri
-                        LEFT JOIN "Product" p ON ri."productId" = p.id
-                        WHERE ri."realizationId" = r.id), '[]'::json
+                        LEFT JOIN "Product" p ON ri."productId"::text = p.id::text
+                        WHERE ri."realizationId"::text = r.id::text), '[]'::json
                    ) as "items"
             FROM "Realization" r
             LEFT JOIN "Counterparty" c ON r."counterpartyId" = c.id

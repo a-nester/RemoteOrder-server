@@ -288,8 +288,8 @@ export class BuyerReturnService {
                    COALESCE(
                        (SELECT json_agg(json_build_object('productId', bri."productId", 'productName', p.name, 'category', p.category))
                         FROM "BuyerReturnItem" bri
-                        LEFT JOIN "Product" p ON bri."productId" = p.id
-                        WHERE bri."buyerReturnId" = br.id), '[]'::json
+                        LEFT JOIN "Product" p ON bri."productId"::text = p.id::text
+                        WHERE bri."buyerReturnId"::text = br.id::text), '[]'::json
                    ) as "items"
             FROM "BuyerReturn" br
             LEFT JOIN "Counterparty" c ON c.id = br."counterpartyId"
